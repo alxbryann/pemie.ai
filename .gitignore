@@ -6,6 +6,7 @@ build/
 *.local
 .DS_Store
 coverage/
+*.tsbuildinfo
 .turbo/
 .omc/
 apps/api/prisma/*.db

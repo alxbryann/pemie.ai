@@ -39,8 +39,8 @@ npm run dev:web             # frontend en http://localhost:5173
 
 ## Roadmap (fases)
 
-- **F0** Scaffolding (este commit) — monorepo, backend+frontend ejecutables, esquema Prisma completo.
-- **F1** Multi-tenancy — workspaces, membresías, invitaciones, proyectos, auth.
+- **F0** ✅ Scaffolding — monorepo, backend+frontend ejecutables, esquema Prisma completo.
+- **F1** ✅ Multi-tenancy — workspaces, membresías, invitaciones, proyectos, auth (email/password + GitHub OAuth, sesiones por cookie).
 - **F2** Ingesta — GitHub App + webhooks + clasificación de commits.
 - **F3** Objetivo, informes y notas (flujo Hermes generalizado).
 - **F4** MCP + API keys/scopes + AuditLog.

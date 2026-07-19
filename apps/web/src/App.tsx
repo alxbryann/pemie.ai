@@ -1,74 +1,45 @@
-import { useEffect, useState } from "react";
-import { api, type Health } from "./lib/api.js";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
+import { useAuth } from "./lib/auth.js";
+import { Layout } from "./components/Layout.js";
+import { Spinner } from "./components/ui.js";
+import Login from "./pages/Login.js";
+import Register from "./pages/Register.js";
+import Workspaces from "./pages/Workspaces.js";
+import Workspace from "./pages/Workspace.js";
+import Project from "./pages/Project.js";
+import AcceptInvite from "./pages/AcceptInvite.js";
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api
-      .health()
-      .then(setHealth)
-      .catch((e) => setError(String(e)));
-  }, []);
+  const { loading } = useAuth();
+  if (loading) return <Spinner />;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-5xl px-6 py-4 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-brand text-brand-fg grid place-items-center font-bold">
-            p
-          </div>
-          <span className="font-semibold text-lg">pemie.ai</span>
-          <span className="ml-auto text-sm text-slate-500">
-            plataforma multi-proyecto · personas + agentes
-          </span>
-        </div>
-      </header>
+    <Routes>
+      <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+      <Route path="/register" element={<GuestOnly><Register /></GuestOnly>} />
+      <Route path="/invite/:token" element={<AcceptInvite />} />
 
-      <main className="mx-auto max-w-5xl w-full px-6 py-12 flex-1">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Monitorea tus proyectos y equipos
-        </h1>
-        <p className="mt-3 text-slate-600 max-w-2xl">
-          Workspaces, informes de agentes, generación de HUs y kanban — para
-          personas por la web y para agentes por MCP.
-        </p>
+      <Route path="/" element={<Protected><Workspaces /></Protected>} />
+      <Route path="/w/:slug" element={<Protected><Workspace /></Protected>} />
+      <Route path="/w/:slug/p/:projectSlug" element={<Protected><Project /></Protected>} />
 
-        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
-            Estado del backend
-          </h2>
-          {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
-          {!error && !health && (
-            <p className="mt-2 text-slate-400 text-sm">conectando…</p>
-          )}
-          {health && (
-            <dl className="mt-3 grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <dt className="text-slate-400">servicio</dt>
-                <dd className="font-medium">{health.service}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">estado</dt>
-                <dd className="font-medium text-green-600">{health.status}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">db</dt>
-                <dd
-                  className={
-                    health.db === "ok"
-                      ? "font-medium text-green-600"
-                      : "font-medium text-amber-600"
-                  }
-                >
-                  {health.db}
-                </dd>
-              </div>
-            </dl>
-          )}
-        </div>
-      </main>
-    </div>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
+}
+
+/** Envuelve rutas que requieren sesión; redirige a /login si no hay usuario. */
+function Protected({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  return <Layout>{children}</Layout>;
+}
+
+/** Rutas solo para invitados (login/register); redirige a la app si ya hay sesión. */
+function GuestOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }

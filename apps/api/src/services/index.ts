@@ -6,13 +6,13 @@
 // solo traducen su transporte hacia/desde estas funciones.
 //
 // Se irá poblando por fase:
-//   F1  workspaces / memberships / invitations / projects   -> ./tenancy
+//   F1  workspaces / memberships / invitations / projects   -> ./tenancy, ./auth ✓
 //   F2  ingesta GitHub + clasificación + stats               -> ./ingest, ./stats
 //   F3  objetivo / informes / notas                          -> ./reports
 //   F4  api keys / scopes / audit log                        -> ./agents
 //   F5  historias de usuario                                 -> ./stories
 //   F6  kanban                                               -> ./board
-//
-// Placeholder de F0: exporta utilidades comunes a medida que se creen.
 
-export {};
+export * as auth from "./auth.js";
+export * as tenancy from "./tenancy.js";
+export { ServiceError } from "./errors.js";

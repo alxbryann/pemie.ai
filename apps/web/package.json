@@ -12,7 +12,8 @@
   "dependencies": {
     "@pemie/shared": "*",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@types/react": "^18",

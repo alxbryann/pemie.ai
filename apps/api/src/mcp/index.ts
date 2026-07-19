@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import type { AppEnv } from "../rest/http.js";
 
 /**
  * Monta la interfaz MCP (consumida por agentes) sobre `app`.
@@ -11,7 +12,7 @@ import type { Hono } from "hono";
  *
  * Placeholder de F0: expone un descriptor de las tools/resources previstas.
  */
-export function registerMcp(app: Hono) {
+export function registerMcp(app: Hono<AppEnv>) {
   app.get("/mcp", (c) =>
     c.json({
       status: "not-implemented",

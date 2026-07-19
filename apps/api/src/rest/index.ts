@@ -1,12 +1,16 @@
 import type { Hono } from "hono";
 import { prisma } from "../db.js";
+import { type AppEnv, sessionMiddleware } from "./http.js";
+import { authRoutes } from "./auth.js";
+import { workspaceRoutes } from "./workspaces.js";
+import { invitationRoutes } from "./invitations.js";
 
 /**
  * Monta la interfaz REST/JSON (consumida por el frontend web) sobre `app`.
  * Cada handler debe delegar en la capa de servicios (src/services); aquí solo
  * va traducción HTTP <-> servicios. Los recursos se agregan por fase.
  */
-export function registerRest(app: Hono) {
+export function registerRest(app: Hono<AppEnv>) {
   app.get("/api/health", async (c) => {
     let db = "unknown";
     try {
@@ -23,7 +27,7 @@ export function registerRest(app: Hono) {
     });
   });
 
-  // Índice de la API (se irá completando por fase).
+  // Índice de la API.
   app.get("/api", (c) =>
     c.json({
       name: "pemie.ai API",
@@ -35,4 +39,12 @@ export function registerRest(app: Hono) {
       },
     })
   );
+
+  // Resuelve la sesión (cookie -> user) para todo /api/*.
+  app.use("/api/*", sessionMiddleware);
+
+  // Recursos F1: auth + tenencia.
+  app.route("/api/auth", authRoutes());
+  app.route("/api/workspaces", workspaceRoutes());
+  app.route("/api/invitations", invitationRoutes());
 }
