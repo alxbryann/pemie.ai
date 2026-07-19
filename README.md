@@ -41,9 +41,9 @@ npm run dev:web             # frontend en http://localhost:5173
 
 - **F0** ✅ Scaffolding — monorepo, backend+frontend ejecutables, esquema Prisma completo.
 - **F1** ✅ Multi-tenancy — workspaces, membresías, invitaciones, proyectos, auth (email/password + GitHub OAuth, sesiones por cookie).
-- **F2** Ingesta — GitHub App + webhooks + clasificación de commits.
-- **F3** Objetivo, informes y notas (flujo Hermes generalizado).
-- **F4** MCP + API keys/scopes + AuditLog.
-- **F5** Generación de Historias de Usuario (HUs).
-- **F6** Kanban.
+- **F2** ✅ Ingesta — GitHub App + webhooks (`/webhooks/github`) + clasificación de commits por dominio, backfill vía API y stats por proyecto.
+- **F3** ✅ Objetivo (con historial), informes de avance (verdict/score/métricas auto-calculadas de commits) y notas (feedback que se responde), flujo Hermes generalizado.
+- **F4** ✅ Interfaz MCP (JSON-RPC sobre HTTP) + API keys con scopes + AuditLog. Los agentes autentican por API key (Bearer) y cada `tools/call` se audita.
+- **F5** ✅ Historias de Usuario — épicas + HUs (narrativa role/want/benefit + criterios Given/When/Then), keys incrementales por proyecto; creables por agente vía MCP.
+- **F6** ✅ Kanban — tablero con columnas por defecto, tarjetas (ligables a HUs) con orden y registro de actividad; movibles por agente vía MCP.
 - **F7** Migración de datos gotom + deploy AWS.

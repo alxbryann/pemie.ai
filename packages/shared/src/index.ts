@@ -68,6 +68,33 @@ export const DEFAULT_DOMAIN_CONFIG: DomainConfig = {
   fallback: "otro",
 };
 
+/**
+ * Clasifica el mensaje de un commit en una categoría de dominio.
+ *
+ * Función pura y agnóstica de runtime (usada por la ingesta del backend y por
+ * el frontend para previsualizar). Toma la primera línea del mensaje y devuelve
+ * la `key` de la primera categoría cuyo matcher (regex, case-insensitive)
+ * coincida; si ninguna coincide, devuelve `config.fallback`.
+ */
+export function classifyCommit(
+  message: string,
+  config: DomainConfig = DEFAULT_DOMAIN_CONFIG
+): string {
+  const subject = (message ?? "").split("\n")[0]!.trim();
+  for (const category of config.categories) {
+    for (const matcher of category.matchers ?? []) {
+      let re: RegExp;
+      try {
+        re = new RegExp(matcher, "i");
+      } catch {
+        continue; // matcher inválido: se ignora en vez de romper la ingesta
+      }
+      if (re.test(subject)) return category.key;
+    }
+  }
+  return config.fallback;
+}
+
 /** Narrativa canónica de una Historia de Usuario. */
 export interface UserStoryNarrative {
   role: string; // Como <role>

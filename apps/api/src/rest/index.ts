@@ -4,6 +4,7 @@ import { type AppEnv, sessionMiddleware } from "./http.js";
 import { authRoutes } from "./auth.js";
 import { workspaceRoutes } from "./workspaces.js";
 import { invitationRoutes } from "./invitations.js";
+import { webhookRoutes } from "./webhooks.js";
 
 /**
  * Monta la interfaz REST/JSON (consumida por el frontend web) sobre `app`.
@@ -40,10 +41,13 @@ export function registerRest(app: Hono<AppEnv>) {
     })
   );
 
+  // Webhooks de ingesta (F2): fuera de /api/*, autenticados por firma HMAC.
+  app.route("/webhooks", webhookRoutes());
+
   // Resuelve la sesión (cookie -> user) para todo /api/*.
   app.use("/api/*", sessionMiddleware);
 
-  // Recursos F1: auth + tenencia.
+  // Recursos F1: auth + tenencia. F2 añade repos/commits/stats bajo proyectos.
   app.route("/api/auth", authRoutes());
   app.route("/api/workspaces", workspaceRoutes());
   app.route("/api/invitations", invitationRoutes());
