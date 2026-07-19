@@ -1,0 +1,23 @@
+{
+  "name": "pemie.ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "pemie.ai — plataforma multi-proyecto para monitorear equipos y proyectos, para personas y agentes (MCP).",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:api": "npm run dev --workspace @pemie/api",
+    "dev:web": "npm run dev --workspace @pemie/web",
+    "build": "npm run build --workspaces --if-present",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate --workspace @pemie/api",
+    "db:studio": "npm run db:studio --workspace @pemie/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

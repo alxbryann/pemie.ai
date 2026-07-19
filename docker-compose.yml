@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: pemie-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pemie
+      POSTGRES_PASSWORD: pemie
+      POSTGRES_DB: pemie
+    ports:
+      - "5433:5432"
+    volumes:
+      - pemie-db-data:/var/lib/postgresql/data
+
+volumes:
+  pemie-db-data:
