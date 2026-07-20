@@ -8,7 +8,7 @@
   --ink-700: #2b3860;
   --ink-600: #5a6478; /* secondary text */
   --ink-500: #7a8497;
-  --ink-400: #9aa1b2; /* muted / placeholder */
+  --ink-400: #6b7688; /* muted / placeholder */
   --ink-300: #c3c9d6;
 
   /* ---- Surfaces ---- */
@@ -56,6 +56,9 @@
   --accent-soft:   var(--blue-300);
   --accent-tint:   var(--blue-100);
   --focus-ring:    var(--blue-300);
+  --text-success: #0d7a51;
+  --text-danger: #b8353a;
+  --text-warning: #8a5e0a;
 
   --success: var(--green-600);
   --warning: var(--amber-600);
