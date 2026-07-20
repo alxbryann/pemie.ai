@@ -146,7 +146,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           ) : (
             <div className="divide-y divide-line-100">
               {repos.map((r) => (
-                <div key={r.id} className="flex items-center justify-between py-3 hover:bg-surface-50">
+                <div key={r.id} className="flex items-center justify-between -mx-6 px-6 py-3 hover:bg-surface-50">
                   <div>
                     <a
                       href={r.url ?? undefined}
@@ -209,6 +209,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
                     placeholder="Buscar repo…"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Buscar repositorio"
                   />
                 </div>
                 <div className="max-h-[55vh] divide-y divide-line-100 overflow-y-auto">
@@ -271,7 +272,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           ) : (
             <div className="divide-y divide-line-100">
               {commits.map((c) => (
-                <div key={c.id} className="flex items-start gap-3 py-3 hover:bg-surface-50">
+                <div key={c.id} className="flex items-start gap-3 -mx-6 px-6 py-3 hover:bg-surface-50">
                   <Badge tone="neutral" mono>
                     {c.domain}
                   </Badge>
