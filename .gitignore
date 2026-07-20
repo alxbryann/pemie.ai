@@ -13,3 +13,5 @@ apps/api/prisma/*.db
 apps/web/dist/
 apps/api/dist/
 packages/shared/dist/
+.vercel
+.env*
