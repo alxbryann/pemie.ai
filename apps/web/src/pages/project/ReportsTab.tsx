@@ -123,7 +123,7 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
               {reports.map((r) => (
                 <div
                   key={r.id}
-                  className="flex items-start justify-between gap-4 py-3 hover:bg-surface-50"
+                  className="flex items-start justify-between gap-4 -mx-6 px-6 py-3 hover:bg-surface-50"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-body">
@@ -157,6 +157,7 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
             placeholder="Escribe una nota o pregunta…"
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
+            aria-label="Nueva nota"
           />
           <Button type="submit">Agregar</Button>
         </form>
