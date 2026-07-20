@@ -146,7 +146,7 @@ export function Card({
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
-  return <p className="text-body-sm text-red-600">{children}</p>;
+  return <p className="text-body-sm text-[#b8353a]">{children}</p>;
 }
 
 export type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger";
@@ -196,8 +196,8 @@ export function Stat({
   deltaTone?: "success" | "danger" | "neutral";
 }) {
   const tone = {
-    success: "text-green-600",
-    danger: "text-red-600",
+    success: "text-[#0d7a51]",
+    danger: "text-[#b8353a]",
     neutral: "text-ink-400",
   }[deltaTone];
   return (
@@ -289,7 +289,10 @@ export function Tabs({
   className?: string;
 }) {
   return (
-    <div role="tablist" className={`flex gap-1 border-b border-line-200 ${className}`}>
+    <div
+      role="tablist"
+      className={`flex flex-nowrap gap-1 overflow-x-auto border-b border-line-200 ${className}`}
+    >
       {items.map((it) => {
         const on = it.id === value;
         return (
@@ -298,7 +301,7 @@ export function Tabs({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(it.id)}
-            className={`relative inline-flex items-center gap-2 px-3.5 pb-3 pt-2.5 text-[14px] transition-colors duration-150 ${
+            className={`relative inline-flex items-center gap-2 whitespace-nowrap px-3.5 pb-3 pt-2.5 text-[14px] transition-colors duration-150 ${
               on ? "font-semibold text-ink-900" : "font-medium text-ink-500 hover:text-ink-800"
             }`}
           >
@@ -368,7 +371,7 @@ export function EmptyState({
   // `compact` para huecos estrechos (columnas de tablero), donde el bloque completo pesa demasiado.
   if (compact) {
     return (
-      <p className="rounded-md border border-dashed border-line-200 px-3 py-5 text-center text-body-sm text-ink-400">
+      <p className="rounded-md border border-dashed border-ink-300 px-3 py-5 text-center text-body-sm text-ink-400">
         {title}
       </p>
     );
