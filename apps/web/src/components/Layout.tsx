@@ -18,7 +18,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col bg-surface-50">
       {/* Único lugar del sistema donde se usa transparencia + blur. */}
       <header className="sticky top-0 z-50 border-b border-line-200 bg-white/[0.82] backdrop-blur-xl">
-        <div className="mx-auto flex max-w-container items-center gap-3 px-8 py-3.5">
+        <div className="mx-auto flex max-w-container items-center gap-3 px-4 py-3.5 sm:px-8">
           <Link to="/" className="flex items-center gap-2.5">
             <LogoMark size={26} />
             <Wordmark />
@@ -46,7 +46,7 @@ export function Layout({ children }: { children: ReactNode }) {
           )}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-container flex-1 px-8 py-12">{children}</main>
+      <main className="mx-auto w-full max-w-container flex-1 px-4 py-12 sm:px-8">{children}</main>
     </div>
   );
 }
