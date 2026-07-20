@@ -29,7 +29,7 @@ export default function Register() {
   }
 
   return (
-    <AuthShell title="Crea tu cuenta" subtitle="Empieza a monitorear tus proyectos.">
+    <AuthShell eyebrow="REGISTRO" title="Crea tu cuenta" subtitle="Empieza a monitorear tus proyectos.">
       <form onSubmit={onSubmit} className="space-y-4">
         <Field label="Nombre">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Opcional" />
@@ -53,9 +53,9 @@ export default function Register() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-slate-500">
+      <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿Ya tienes cuenta?{" "}
-        <Link to="/login" className="font-medium text-brand hover:underline">
+        <Link to="/login" className="font-medium text-blue-600 hover:underline">
           Entra
         </Link>
       </p>

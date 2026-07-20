@@ -1,0 +1,63 @@
+/* pemie.ai — color tokens
+   Light-first. Cool neutrals, electric-blue brand, restrained semantics.
+   Semantic accents share chroma/lightness in oklch, hue varies. */
+:root {
+  /* ---- Neutrals (cool ink) ---- */
+  --ink-900: #0c1633; /* primary text / near-black navy */
+  --ink-800: #1b2646;
+  --ink-700: #2b3860;
+  --ink-600: #5a6478; /* secondary text */
+  --ink-500: #7a8497;
+  --ink-400: #9aa1b2; /* muted / placeholder */
+  --ink-300: #c3c9d6;
+
+  /* ---- Surfaces ---- */
+  --surface-0:   #ffffff; /* page / card */
+  --surface-50:  #f7f9fc; /* subtle raised / section */
+  --surface-100: #eef2f7; /* sunken / hover fill */
+
+  /* ---- Lines ---- */
+  --line-200: #e3e5ea; /* default border */
+  --line-100: #eef0f4; /* hairline / divider */
+
+  /* ---- Brand blue ---- */
+  --blue-700: #1e3fcc; /* pressed / dark */
+  --blue-600: #2f5bff; /* primary accent */
+  --blue-500: #5b7cff;
+  --blue-300: #8fa6ff; /* soft */
+  --blue-100: #eef2ff; /* tint background */
+
+  /* ---- Semantic (oklch-harmonized ~L0.62 C0.14) ---- */
+  --green-600: #12a06b; /* success */
+  --green-100: #e2f6ee;
+  --amber-600: #c98a12; /* warning */
+  --amber-100: #f9f0da;
+  --red-600:   #e0484d; /* danger */
+  --red-100:   #fdecec;
+
+  /* ============ Semantic aliases ============ */
+  --text-primary:   var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-muted:     var(--ink-400);
+  --text-onaccent:  #ffffff;
+  --text-link:      var(--blue-600);
+
+  --bg-page:    var(--surface-0);
+  --bg-subtle:  var(--surface-50);
+  --bg-sunken:  var(--surface-100);
+  --surface-card: var(--surface-0);
+
+  --border-default: var(--line-200);
+  --border-hairline: var(--line-100);
+  --border-strong:  var(--ink-300);
+
+  --accent:        var(--blue-600);
+  --accent-hover:  var(--blue-700);
+  --accent-soft:   var(--blue-300);
+  --accent-tint:   var(--blue-100);
+  --focus-ring:    var(--blue-300);
+
+  --success: var(--green-600);
+  --warning: var(--amber-600);
+  --danger:  var(--red-600);
+}

@@ -2,20 +2,27 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ApiError, type Project as Prj } from "../lib/api.js";
 import { Badge, Card, Spinner } from "../components/ui.js";
+import CommitsTab from "./project/CommitsTab.js";
+import ReportsTab from "./project/ReportsTab.js";
+import StoriesTab from "./project/StoriesTab.js";
+import BoardTab from "./project/BoardTab.js";
+import AgentTab from "./project/AgentTab.js";
 
-// Detalle de proyecto. En F1 es un esqueleto; las fases F2–F6 llenan las
-// secciones (ingesta/commits, informes, HUs, kanban).
-const PHASES = [
-  { title: "Ingesta de commits", phase: "F2", desc: "Conecta repos de GitHub y clasifica commits." },
-  { title: "Objetivo e informes", phase: "F3", desc: "Meta del proyecto, informes de agentes y notas." },
-  { title: "Historias de usuario", phase: "F5", desc: "Generación y gestión de HUs." },
-  { title: "Kanban", phase: "F6", desc: "Tablero de tareas y flujo del equipo." },
-];
+const TABS = [
+  { id: "commits", label: "Ingesta de commits" },
+  { id: "reports", label: "Objetivo e informes" },
+  { id: "stories", label: "Historias de usuario" },
+  { id: "board", label: "Kanban" },
+  { id: "agent", label: "Agente (MCP)" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
 
 export default function Project() {
   const { slug = "", projectSlug = "" } = useParams();
   const [project, setProject] = useState<Prj | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>("commits");
 
   useEffect(() => {
     api.projects
@@ -42,18 +49,28 @@ export default function Project() {
         {project.description && <p className="mt-1 text-slate-500">{project.description}</p>}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {PHASES.map((s) => (
-          <Card key={s.phase} className="opacity-70">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">{s.title}</h2>
-              <Badge>{s.phase}</Badge>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">{s.desc}</p>
-            <p className="mt-2 text-xs text-slate-400">Próximamente</p>
-          </Card>
+      {/* Navegación por pestañas */}
+      <div className="flex flex-wrap gap-1 border-b border-slate-200">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition ${
+              tab === t.id
+                ? "border-brand text-brand"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
+
+      {tab === "commits" && <CommitsTab ws={slug} proj={projectSlug} />}
+      {tab === "reports" && <ReportsTab ws={slug} proj={projectSlug} />}
+      {tab === "stories" && <StoriesTab ws={slug} proj={projectSlug} />}
+      {tab === "board" && <BoardTab ws={slug} proj={projectSlug} />}
+      {tab === "agent" && <AgentTab ws={slug} proj={projectSlug} projectId={project.id} />}
     </div>
   );
 }

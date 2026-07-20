@@ -7,12 +7,16 @@ export function githubOAuthConfigured(): boolean {
   return Boolean(env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET);
 }
 
+// `repo` permite listar y leer los repos del usuario (incl. privados) para el
+// selector de vinculación. `read:user user:email` es para el perfil/login.
+const OAUTH_SCOPE = "read:user user:email repo";
+
 /** URL a la que redirigir al usuario para autorizar. */
 export function githubAuthorizeUrl(state: string, redirectUri: string): string {
   const params = new URLSearchParams({
     client_id: env.GITHUB_OAUTH_CLIENT_ID!,
     redirect_uri: redirectUri,
-    scope: "read:user user:email",
+    scope: OAUTH_SCOPE,
     state,
   });
   return `https://github.com/login/oauth/authorize?${params}`;
@@ -80,4 +84,49 @@ export async function fetchProfile(accessToken: string): Promise<GithubProfile> 
     name: u.name,
     avatarUrl: u.avatar_url,
   };
+}
+
+export interface GithubUserRepo {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  url: string;
+  description: string | null;
+  updatedAt: string;
+}
+
+/**
+ * Lista los repos accesibles por el usuario (owner, colaborador, miembro de
+ * org), ordenados por actualización. Usa el access token OAuth guardado.
+ */
+export async function fetchUserRepos(accessToken: string): Promise<GithubUserRepo[]> {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "pemie.ai",
+  };
+  const res = await fetch(
+    "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
+    { headers }
+  );
+  if (!res.ok) throw new Error(`GitHub /user/repos: ${res.status}`);
+  const repos = (await res.json()) as {
+    name: string;
+    full_name: string;
+    private: boolean;
+    html_url: string;
+    description: string | null;
+    updated_at: string;
+    owner: { login: string };
+  }[];
+  return repos.map((r) => ({
+    owner: r.owner.login,
+    name: r.name,
+    fullName: r.full_name,
+    private: r.private,
+    url: r.html_url,
+    description: r.description,
+    updatedAt: r.updated_at,
+  }));
 }

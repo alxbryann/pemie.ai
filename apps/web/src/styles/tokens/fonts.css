@@ -1,0 +1,6 @@
+/* pemie.ai — webfonts.
+   Sora + IBM Plex Mono are served from Google Fonts.
+   NOTE: fonts are Google-hosted (not self-hosted binaries in /assets).
+   If you need offline/self-hosted builds, download the .woff2 files and
+   replace this @import with @font-face rules. */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');

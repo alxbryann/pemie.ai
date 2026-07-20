@@ -1,0 +1,37 @@
+/* pemie.ai — typography tokens
+   Display/UI: Sora (geometric, confident).  Mono/labels: IBM Plex Mono. */
+:root {
+  --font-sans: 'Sora', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Weights */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+
+  /* Type scale (px) */
+  --fs-display:  56px; /* hero */
+  --fs-h1:       42px;
+  --fs-h2:       32px;
+  --fs-h3:       24px;
+  --fs-h4:       19px;
+  --fs-body-lg:  17px;
+  --fs-body:     15px;
+  --fs-body-sm:  13px;
+  --fs-caption:  12px;
+  --fs-mono-label: 11px; /* uppercase mono eyebrows */
+
+  /* Line heights */
+  --lh-tight: 1.02;
+  --lh-heading: 1.1;
+  --lh-snug: 1.35;
+  --lh-body: 1.55;
+
+  /* Letter spacing */
+  --ls-tight: -0.03em;   /* big display */
+  --ls-heading: -0.02em;
+  --ls-normal: 0;
+  --ls-mono: 0.06em;     /* mono eyebrows */
+}

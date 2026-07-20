@@ -1,11 +1,63 @@
+/* Tokens del design system de pemie.ai — fuente de verdad para color, tipo y espaciado. */
+@import "./styles/tokens/fonts.css";
+@import "./styles/tokens/colors.css";
+@import "./styles/tokens/typography.css";
+@import "./styles/tokens/spacing.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light dark;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--text-primary);
+    background: var(--bg-page);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  a {
+    color: var(--text-link);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--accent-hover);
+  }
+
+  ::selection {
+    background: var(--accent-tint);
+    color: var(--ink-900);
+  }
+
+  /* Headings con el tracking cerrado que pide el sistema. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0;
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--ls-heading);
+    line-height: var(--lh-heading);
+  }
 }
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+@layer components {
+  /* Eyebrow mono en mayúsculas: la señal dev-infra del sistema. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--fs-mono-label);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--ls-mono);
+    text-transform: uppercase;
+    color: var(--ink-500);
+  }
 }

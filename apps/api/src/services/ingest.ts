@@ -13,6 +13,7 @@ import {
   githubAppConfigured,
   type NormalizedCommit,
 } from "../lib/github-app.js";
+import { fetchUserRepos } from "../lib/github-oauth.js";
 
 /** Carga un proyecto verificando que el usuario tenga `minRole` en su workspace. */
 export async function projectWithAccess(userId: string, projectId: string, minRole: Role = "viewer") {
@@ -31,6 +32,20 @@ async function repoWithAccess(userId: string, repoId: string, minRole: Role = "v
 }
 
 // ─── Repos ───────────────────────────────────────────────────────────────
+
+/**
+ * Lista los repos de GitHub del usuario (para el selector de vinculación),
+ * usando el access token OAuth guardado al hacer login con GitHub.
+ */
+export async function listUserGithubRepos(userId: string) {
+  const account = await prisma.account.findFirst({
+    where: { userId, provider: "github" },
+    select: { accessToken: true },
+  });
+  if (!account?.accessToken)
+    throw badRequest("Conecta tu cuenta de GitHub para ver tus repos", "github_not_connected");
+  return fetchUserRepos(account.accessToken);
+}
 
 export interface LinkRepoInput {
   owner: string;

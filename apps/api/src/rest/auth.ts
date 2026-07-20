@@ -10,10 +10,12 @@ import * as auth from "../services/auth.js";
 import { badRequest } from "../services/errors.js";
 import {
   type AppEnv,
+  requireUser,
   setSessionCookie,
   clearSessionCookie,
   SESSION_COOKIE,
 } from "./http.js";
+import * as ingest from "../services/ingest.js";
 import {
   githubOAuthConfigured,
   githubAuthorizeUrl,
@@ -79,6 +81,12 @@ export function authRoutes() {
     return c.redirect(githubAuthorizeUrl(state, redirectUri));
   });
 
+  // Repos de GitHub del usuario autenticado (para el selector de vinculación).
+  app.get("/github/repos", async (c) => {
+    const user = requireUser(c);
+    return c.json({ repos: await ingest.listUserGithubRepos(user.id) });
+  });
+
   app.get("/github/callback", async (c) => {
     const code = c.req.query("code");
     const state = c.req.query("state");
@@ -92,7 +100,8 @@ export function authRoutes() {
       const { token, expiresAt } = await auth.loginWithGithub({ ...profile, accessToken });
       setSessionCookie(c, token, expiresAt);
       return c.redirect(`${env.WEB_ORIGIN}/`);
-    } catch {
+    } catch (err) {
+      console.error("GitHub OAuth callback error:", err);
       return c.redirect(`${env.WEB_ORIGIN}/login?error=oauth_failed`);
     }
   });

@@ -1,0 +1,15 @@
+/* pemie.ai — base resets & element defaults (kept minimal) */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--text-link); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+::selection { background: var(--accent-tint); color: var(--ink-900); }

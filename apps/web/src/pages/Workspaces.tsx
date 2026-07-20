@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError, type WorkspaceSummary } from "../lib/api.js";
-import { Badge, Button, Card, ErrorText, Field, Input, Spinner } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Field,
+  Input,
+  PageHeader,
+  Spinner,
+} from "../components/ui.js";
 
 export default function Workspaces() {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[] | null>(null);
@@ -39,13 +49,14 @@ export default function Workspaces() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tus workspaces</h1>
-          <p className="text-sm text-slate-500">Cada workspace agrupa proyectos y su equipo.</p>
-        </div>
-        <Button onClick={() => setCreating((v) => !v)}>Nuevo workspace</Button>
-      </div>
+      <PageHeader
+        eyebrow="Workspaces"
+        title="Tus workspaces"
+        description="Cada workspace agrupa proyectos y su equipo."
+        actions={
+          <Button onClick={() => setCreating((v) => !v)}>Nuevo workspace</Button>
+        }
+      />
 
       {creating && (
         <Card className="mb-6">
@@ -66,19 +77,21 @@ export default function Workspaces() {
       )}
 
       {workspaces.length === 0 ? (
-        <Card className="text-center text-slate-500">
-          Aún no tienes workspaces. Crea el primero para empezar.
-        </Card>
+        <EmptyState
+          title="Aún no tienes workspaces"
+          description="Crea el primero para empezar a organizar tus proyectos y equipo."
+          action={<Button onClick={() => setCreating(true)}>Crear workspace</Button>}
+        />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {workspaces.map((ws) => (
             <Link key={ws.id} to={`/w/${ws.slug}`}>
-              <Card className="transition hover:border-brand hover:shadow-sm">
+              <Card interactive>
                 <div className="flex items-center justify-between">
-                  <h2 className="font-semibold">{ws.name}</h2>
-                  <Badge>{ws.role}</Badge>
+                  <h2 className="text-body font-semibold text-ink-900">{ws.name}</h2>
+                  <Badge tone="neutral" mono>{ws.role}</Badge>
                 </div>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-2 font-mono text-body-sm text-ink-400">
                   {ws.projectCount} {ws.projectCount === 1 ? "proyecto" : "proyectos"}
                 </p>
               </Card>

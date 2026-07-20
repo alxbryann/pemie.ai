@@ -8,7 +8,18 @@ import {
   type Member,
   type Invitation,
 } from "../lib/api.js";
-import { Badge, Button, Card, ErrorText, Field, Input, Spinner } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Field,
+  Input,
+  PageHeader,
+  Spinner,
+  type BadgeTone,
+} from "../components/ui.js";
 
 export default function Workspace() {
   const { slug = "" } = useParams();
@@ -38,20 +49,19 @@ export default function Workspace() {
   const canManage = ws.role === "owner" || ws.role === "admin";
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link to="/" className="text-sm text-slate-400 hover:underline">
-            ← workspaces
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight">{ws.name}</h1>
-        </div>
-        <Badge>{ws.role}</Badge>
+    <div>
+      <Link to="/" className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">
+        ← workspaces
+      </Link>
+      <PageHeader
+        title={ws.name}
+        actions={<Badge tone="neutral" mono>{ws.role}</Badge>}
+      />
+
+      <div className="space-y-8">
+        <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
+        <TeamSection slug={slug} canManage={canManage} />
       </div>
-
-      <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
-
-      <TeamSection slug={slug} canManage={canManage} />
     </div>
   );
 }
@@ -90,9 +100,9 @@ function ProjectsSection({
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Proyectos</h2>
-        <Button variant="ghost" onClick={() => setCreating((v) => !v)}>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-h3 text-ink-900">Proyectos</h2>
+        <Button variant="secondary" size="sm" onClick={() => setCreating((v) => !v)}>
           Nuevo proyecto
         </Button>
       </div>
@@ -126,20 +136,28 @@ function ProjectsSection({
       )}
 
       {projects.length === 0 ? (
-        <Card className="text-center text-slate-500">Aún no hay proyectos en este workspace.</Card>
+        <EmptyState
+          title="Aún no hay proyectos"
+          description="Crea el primero para empezar a rastrear commits e historias de usuario."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+              Crear proyecto
+            </Button>
+          }
+        />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {projects.map((p) => (
             <Link key={p.id} to={`/w/${slug}/p/${p.slug}`}>
-              <Card className="transition hover:border-brand hover:shadow-sm">
+              <Card interactive>
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{p.name}</h3>
-                  <Badge>{p.key}</Badge>
+                  <h3 className="text-body font-semibold text-ink-900">{p.name}</h3>
+                  <Badge tone="neutral" mono>{p.key}</Badge>
                 </div>
                 {p.description && (
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-500">{p.description}</p>
+                  <p className="mt-2 line-clamp-2 text-body-sm text-ink-500">{p.description}</p>
                 )}
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 font-mono text-body-sm text-ink-400">
                   {p._count.repos} repos · {p._count.userStories} HUs
                 </p>
               </Card>
@@ -149,6 +167,12 @@ function ProjectsSection({
       )}
     </section>
   );
+}
+
+function invStatusTone(status: string): BadgeTone {
+  if (status === "accepted") return "success";
+  if (status === "expired") return "danger";
+  return "warning";
 }
 
 function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) {
@@ -194,21 +218,24 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
 
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold">Equipo</h2>
+      <h2 className="mb-4 text-h3 text-ink-900">Equipo</h2>
       <Card>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line-100">
           {members.map((m) => (
-            <li key={m.membershipId} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-              <div className="grid h-8 w-8 place-items-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
+            <li
+              key={m.membershipId}
+              className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
+            >
+              <div className="grid h-8 w-8 flex-none place-items-center rounded-full bg-surface-100 text-caption font-semibold text-ink-700">
                 {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{m.user.name ?? m.user.email}</p>
-                <p className="truncate text-xs text-slate-400">{m.user.email}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-body-sm font-medium text-ink-900">
+                  {m.user.name ?? m.user.email}
+                </p>
+                <p className="truncate font-mono text-caption text-ink-400">{m.user.email}</p>
               </div>
-              <span className="ml-auto">
-                <Badge>{m.role}</Badge>
-              </span>
+              <Badge tone="neutral" mono>{m.role}</Badge>
             </li>
           ))}
         </ul>
@@ -216,7 +243,7 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
 
       {canManage && (
         <Card className="mt-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-600">Invitar por email</h3>
+          <h3 className="mb-3 text-body-sm font-semibold text-ink-600">Invitar por email</h3>
           <form onSubmit={onInvite} className="flex items-end gap-3">
             <div className="flex-1">
               <Input
@@ -236,17 +263,17 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
           </div>
 
           {invitations.length > 0 && (
-            <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100 pt-2">
+            <ul className="mt-4 divide-y divide-line-100 border-t border-line-100 pt-3">
               {invitations.map((inv) => (
-                <li key={inv.id} className="flex items-center gap-3 py-2 text-sm">
-                  <span className="truncate">{inv.email}</span>
-                  <Badge>{inv.role}</Badge>
-                  <button
-                    onClick={() => onRevoke(inv.id)}
-                    className="ml-auto text-xs text-red-500 hover:underline"
-                  >
+                <li key={inv.id} className="flex items-center gap-3 py-2.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-body-sm text-ink-900">
+                    {inv.email}
+                  </span>
+                  <Badge tone={invStatusTone(inv.status)} dot>{inv.status}</Badge>
+                  <Badge tone="neutral" mono>{inv.role}</Badge>
+                  <Button variant="danger" size="sm" onClick={() => onRevoke(inv.id)}>
                     revocar
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

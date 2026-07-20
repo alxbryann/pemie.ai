@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth.js";
 import { api, ApiError } from "../lib/api.js";
-import { Button, Card, ErrorText, Field, Input } from "../components/ui.js";
+import { Button, Card, ErrorText, Eyebrow, Field, Input, LogoMark, Wordmark } from "../components/ui.js";
 
 export default function Login() {
   const { login } = useAuth();
@@ -28,7 +28,7 @@ export default function Login() {
   }
 
   return (
-    <AuthShell title="Entra a pemie.ai" subtitle="Monitorea tus proyectos y equipos.">
+    <AuthShell eyebrow="ACCESO" title="Entra a pemie.ai" subtitle="Monitorea tus proyectos y equipos.">
       <form onSubmit={onSubmit} className="space-y-4">
         <Field label="Email">
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -47,18 +47,18 @@ export default function Login() {
         </Button>
       </form>
 
-      <div className="my-4 flex items-center gap-3 text-xs text-slate-400">
-        <div className="h-px flex-1 bg-slate-200" /> o <div className="h-px flex-1 bg-slate-200" />
+      <div className="my-4 flex items-center gap-3 text-caption text-ink-400">
+        <div className="h-px flex-1 bg-line-100" /> o <div className="h-px flex-1 bg-line-100" />
       </div>
-      <a href={api.auth.githubUrl()}>
-        <Button variant="ghost" className="w-full">
+      <a href={api.auth.githubUrl()} className="block">
+        <Button variant="secondary" className="w-full">
           Continuar con GitHub
         </Button>
       </a>
 
-      <p className="mt-6 text-center text-sm text-slate-500">
+      <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿No tienes cuenta?{" "}
-        <Link to="/register" className="font-medium text-brand hover:underline">
+        <Link to="/register" className="font-medium text-blue-600 hover:underline">
           Regístrate
         </Link>
       </p>
@@ -73,24 +73,30 @@ function oauthError(code: string | null): string | null {
 }
 
 export function AuthShell({
+  eyebrow,
   title,
   subtitle,
   children,
 }: {
+  eyebrow?: string;
   title: string;
   subtitle: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto mt-16 max-w-sm">
-      <div className="mb-6 text-center">
-        <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl bg-brand text-lg font-bold text-brand-fg">
-          p
-        </div>
-        <h1 className="text-xl font-bold tracking-tight">{title}</h1>
-        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-50 px-4 py-16">
+      <div className="mb-8 flex items-center gap-2.5">
+        <LogoMark size={28} />
+        <Wordmark />
       </div>
-      <Card>{children}</Card>
+      <Card className="w-full max-w-[420px]">
+        <div className="mb-6">
+          {eyebrow ? <Eyebrow className="mb-2 block">{eyebrow}</Eyebrow> : null}
+          <h1 className="text-h3 text-ink-900">{title}</h1>
+          <p className="mt-1.5 text-body-sm text-ink-500">{subtitle}</p>
+        </div>
+        {children}
+      </Card>
     </div>
   );
 }
