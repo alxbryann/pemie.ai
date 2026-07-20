@@ -68,8 +68,13 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="max-w-sm"
+            aria-label="Nueva tarjeta"
           />
-          <Select value={type} onChange={(e) => setType(e.target.value)}>
+          <Select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            aria-label="Tipo de tarjeta"
+          >
             <option value="task">task</option>
             <option value="story">story</option>
             <option value="bug">bug</option>
