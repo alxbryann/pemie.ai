@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type Board } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Input, Select, Spinner } from "../../components/ui.js";
-
-const TYPE_EMOJI: Record<string, string> = { story: "📗", task: "✅", bug: "🐛" };
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Input,
+  Select,
+  Spinner,
+} from "../../components/ui.js";
 
 export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   const [board, setBoard] = useState<Board | null>(null);
@@ -72,41 +79,46 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       </Card>
 
       {/* Columnas */}
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex gap-4 overflow-x-auto pb-2">
         {board.columns.map((col) => (
-          <div key={col.id} className="w-64 shrink-0 rounded-xl bg-slate-50 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-700">{col.name}</h4>
-              <span className="text-xs text-slate-400">{col.cards.length}</span>
+          <div
+            key={col.id}
+            className="w-64 shrink-0 rounded-xl border border-line-100 bg-surface-50 p-3"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-body-sm font-semibold text-ink-900">{col.name}</h4>
+              <span className="font-mono text-mono-label text-ink-400">{col.cards.length}</span>
             </div>
             <div className="space-y-2">
               {col.cards.map((card) => (
-                <div key={card.id} className="rounded-lg border border-slate-200 bg-white p-2">
-                  <p className="text-sm">
-                    <span className="mr-1">{TYPE_EMOJI[card.type] ?? "•"}</span>
-                    {card.title}
-                  </p>
+                <Card key={card.id} padding="sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-body-sm text-ink-900">{card.title}</p>
+                    <Badge tone="neutral" mono>
+                      {card.type}
+                    </Badge>
+                  </div>
                   {card.userStory && (
-                    <p className="mt-1">
-                      <Badge>{card.userStory.key}</Badge>
+                    <p className="mt-1.5">
+                      <Badge tone="brand" mono>
+                        {card.userStory.key}
+                      </Badge>
                     </p>
                   )}
                   <Select
-                    className="mt-2 w-full !py-1 text-xs"
+                    className="mt-2 w-full"
                     value={col.id}
                     onChange={(e) => moveCard(card.id, e.target.value)}
                   >
                     {board.columns.map((c) => (
                       <option key={c.id} value={c.id}>
-                        → {c.name}
+                        {c.name}
                       </option>
                     ))}
                   </Select>
-                </div>
+                </Card>
               ))}
-              {col.cards.length === 0 && (
-                <p className="py-2 text-center text-xs text-slate-300">vacío</p>
-              )}
+              {col.cards.length === 0 && <EmptyState compact title="Sin tarjetas" />}
             </div>
           </div>
         ))}

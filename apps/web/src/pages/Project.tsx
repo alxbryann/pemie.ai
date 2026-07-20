@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ApiError, type Project as Prj } from "../lib/api.js";
-import { Badge, Card, Spinner } from "../components/ui.js";
+import { Badge, Card, PageHeader, Spinner, Tabs } from "../components/ui.js";
 import CommitsTab from "./project/CommitsTab.js";
 import ReportsTab from "./project/ReportsTab.js";
 import StoriesTab from "./project/StoriesTab.js";
@@ -37,34 +37,22 @@ export default function Project() {
   if (!project) return <Spinner />;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link to={`/w/${slug}`} className="text-sm text-slate-400 hover:underline">
-          ← {project.workspace.name}
-        </Link>
-        <div className="mt-1 flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-          <Badge>{project.key}</Badge>
-        </div>
-        {project.description && <p className="mt-1 text-slate-500">{project.description}</p>}
-      </div>
+    <div>
+      <Link to={`/w/${slug}`} className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">
+        ← {project.workspace.name}
+      </Link>
+      <PageHeader
+        title={project.name}
+        description={project.description ?? undefined}
+        actions={<Badge tone="neutral" mono>{project.key}</Badge>}
+      />
 
-      {/* Navegación por pestañas */}
-      <div className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition ${
-              tab === t.id
-                ? "border-brand text-brand"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        items={[...TABS]}
+        value={tab}
+        onChange={(id) => setTab(id as TabId)}
+        className="mb-6"
+      />
 
       {tab === "commits" && <CommitsTab ws={slug} proj={projectSlug} />}
       {tab === "reports" && <ReportsTab ws={slug} proj={projectSlug} />}

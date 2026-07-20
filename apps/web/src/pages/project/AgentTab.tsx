@@ -8,7 +8,17 @@ import {
   type ApiKeyPublic,
   type AuditLog,
 } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Input, Spinner } from "../../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  CodeBlock,
+  EmptyState,
+  ErrorText,
+  Input,
+  Select,
+  Spinner,
+} from "../../components/ui.js";
 
 const MCP_URL = `${API_BASE}/mcp`;
 
@@ -117,32 +127,21 @@ export default function AgentTab({
 
       {/* Cómo conectar */}
       <Card>
-        <h3 className="font-semibold">Conectar un agente por MCP</h3>
-        <p className="mt-1 text-sm text-slate-500">
+        <h3 className="text-h4 text-ink-900">Conectar un agente por MCP</h3>
+        <p className="mt-2 text-body-sm text-ink-600">
           Tu agente (Hermes, u otro) se conecta a este endpoint con una API key. La key define qué
           puede hacer (scopes) y está atada a este proyecto.
         </p>
-        <div className="mt-3 space-y-1 text-sm">
-          <p>
-            <span className="text-slate-400">Endpoint:</span>{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5">{MCP_URL}</code>
-          </p>
-          <p>
-            <span className="text-slate-400">Auth:</span>{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5">
-              Authorization: Bearer &lt;API-KEY&gt;
-            </code>
-          </p>
+        <div className="mt-4 space-y-3">
+          <CodeBlock title="MCP ENDPOINT">{MCP_URL}</CodeBlock>
+          <CodeBlock command={snippet} title="bash" />
         </div>
-        <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
-          {snippet}
-        </pre>
       </Card>
 
       {/* Nueva API key */}
       <Card>
-        <h3 className="font-semibold">Generar API key</h3>
-        <form onSubmit={createKey} className="mt-3 space-y-3">
+        <h3 className="text-h4 text-ink-900">Generar API key</h3>
+        <form onSubmit={createKey} className="mt-4 space-y-4">
           <div className="flex flex-wrap gap-2">
             <Input
               placeholder="Nombre (ej: hermes-prod)"
@@ -150,34 +149,30 @@ export default function AgentTab({
               onChange={(e) => setKeyName(e.target.value)}
               className="max-w-xs"
             />
-            <select
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-            >
+            <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
               <option value="">— sin agente —</option>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Scopes</p>
+            <p className="mb-2 text-caption font-mono uppercase text-ink-500">Scopes</p>
             <div className="flex flex-wrap gap-2">
               {API_SCOPES.map((s) => (
                 <label
                   key={s}
-                  className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${
+                  className={`cursor-pointer rounded-pill border px-2.5 py-1 font-mono text-mono-label font-medium uppercase transition-colors ${
                     scopes.includes(s)
-                      ? "border-brand bg-brand/10 text-brand"
-                      : "border-slate-200 text-slate-500"
+                      ? "border-blue-600 bg-blue-100 text-blue-700"
+                      : "border-line-200 bg-surface-100 text-ink-600 hover:border-ink-300"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    className="hidden"
+                    className="sr-only"
                     checked={scopes.includes(s)}
                     onChange={() => toggleScope(s)}
                   />
@@ -186,74 +181,88 @@ export default function AgentTab({
               ))}
             </div>
           </div>
-          <Button type="submit" disabled={creating || keyName.trim().length < 2 || scopes.length === 0}>
+          <Button
+            type="submit"
+            disabled={creating || keyName.trim().length < 2 || scopes.length === 0}
+          >
             {creating ? "Generando…" : "Generar API key"}
           </Button>
         </form>
 
         {newKey && (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <p className="text-xs font-medium text-amber-800">
-              Copia esta key ahora — no se vuelve a mostrar:
+          <div className="mt-4">
+            <p className="mb-2 text-body-sm font-medium text-amber-600">
+              Copia esta key ahora — no se vuelve a mostrar.
             </p>
-            <code className="mt-1 block break-all rounded bg-white px-2 py-1 text-sm">{newKey}</code>
-            <button
-              className="mt-2 text-xs text-brand hover:underline"
-              onClick={() => navigator.clipboard?.writeText(newKey)}
-            >
-              Copiar al portapapeles
-            </button>
+            <CodeBlock title="API KEY">{newKey}</CodeBlock>
           </div>
         )}
       </Card>
 
       {/* Keys existentes */}
       <Card>
-        <h3 className="font-semibold">API keys ({keys.length})</h3>
-        <div className="mt-3 divide-y divide-slate-100">
-          {keys.length === 0 && <p className="py-2 text-sm text-slate-400">Sin keys todavía.</p>}
-          {keys.map((k) => (
-            <div key={k.id} className="flex items-start justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {k.name} <code className="text-xs text-slate-400">{k.prefix}…</code>
-                </p>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {k.scopes.map((s) => (
-                    <Badge key={s}>{s}</Badge>
-                  ))}
+        <h3 className="text-h4 text-ink-900">API keys ({keys.length})</h3>
+        <div className="mt-4">
+          {keys.length === 0 ? (
+            <EmptyState
+              title="Sin keys todavía"
+              description="Genera una API key para que tu agente pueda autenticarse."
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {keys.map((k) => (
+                <div
+                  key={k.id}
+                  className="flex items-start justify-between gap-3 py-3 hover:bg-surface-50"
+                >
+                  <div className="min-w-0">
+                    <p className="text-body font-medium text-ink-900">
+                      {k.name}{" "}
+                      <code className="font-mono text-caption text-ink-400">{k.prefix}…</code>
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {k.scopes.map((s) => (
+                        <Badge key={s} tone="neutral" mono>
+                          {s}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="mt-1 font-mono text-caption text-ink-400">
+                      {k.lastUsedAt
+                        ? `último uso ${new Date(k.lastUsedAt).toLocaleString()}`
+                        : "sin usar aún"}
+                    </p>
+                  </div>
+                  <Button variant="danger" size="sm" onClick={() => revoke(k.id)}>
+                    Revocar
+                  </Button>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  {k.lastUsedAt
-                    ? `último uso ${new Date(k.lastUsedAt).toLocaleString()}`
-                    : "sin usar aún"}
-                </p>
-              </div>
-              <Button variant="danger" onClick={() => revoke(k.id)} className="!px-2 !py-1 text-xs">
-                Revocar
-              </Button>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
 
       {/* Agentes */}
       <Card>
-        <h3 className="font-semibold">Agentes</h3>
-        <form onSubmit={createAgent} className="mt-3 flex gap-2">
+        <h3 className="text-h4 text-ink-900">Agentes</h3>
+        <form onSubmit={createAgent} className="mt-4 flex gap-2">
           <Input
             placeholder="Nombre del agente (ej: hermes)"
             value={agentName}
             onChange={(e) => setAgentName(e.target.value)}
             className="max-w-xs"
           />
-          <Button type="submit" variant="ghost">
+          <Button type="submit" variant="secondary">
             Añadir agente
           </Button>
         </form>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
+          {agents.length === 0 && (
+            <p className="text-body-sm text-ink-400">Sin agentes registrados.</p>
+          )}
           {agents.map((a) => (
-            <Badge key={a.id}>
+            <Badge key={a.id} tone="brand">
               {a.name} · {a._count.apiKeys} keys
             </Badge>
           ))}
@@ -262,22 +271,33 @@ export default function AgentTab({
 
       {/* Actividad del agente */}
       <Card>
-        <h3 className="font-semibold">Actividad reciente</h3>
-        <div className="mt-3 space-y-1">
-          {logs.length === 0 && (
-            <p className="text-sm text-slate-400">Sin actividad de agente todavía.</p>
-          )}
-          {logs.slice(0, 20).map((l) => (
-            <div key={l.id} className="flex items-center justify-between text-sm">
-              <span>
-                <Badge>{l.actorType}</Badge>{" "}
-                <code className="text-xs">{l.action}</code>
-              </span>
-              <span className="text-xs text-slate-400">
-                {new Date(l.createdAt).toLocaleString()}
-              </span>
+        <h3 className="text-h4 text-ink-900">Actividad reciente</h3>
+        <div className="mt-4">
+          {logs.length === 0 ? (
+            <EmptyState
+              title="Sin actividad"
+              description="Las acciones del agente aparecerán aquí."
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {logs.slice(0, 20).map((l) => (
+                <div
+                  key={l.id}
+                  className="flex items-center justify-between py-2.5 hover:bg-surface-50"
+                >
+                  <span className="flex items-center gap-2">
+                    <Badge tone={l.actorType === "agent" ? "brand" : "neutral"} dot>
+                      {l.actorType}
+                    </Badge>
+                    <code className="font-mono text-caption text-ink-700">{l.action}</code>
+                  </span>
+                  <span className="font-mono text-caption text-ink-400">
+                    {new Date(l.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
     </div>

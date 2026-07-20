@@ -7,7 +7,16 @@ import {
   type Repo,
   type Stats,
 } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Input, Spinner } from "../../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Input,
+  Spinner,
+  Stat,
+} from "../../components/ui.js";
 
 export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -97,22 +106,21 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Stats */}
       {stats && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Card>
-            <p className="text-xs text-slate-400">Commits</p>
-            <p className="text-2xl font-bold">{stats.totalCommits}</p>
+            <Stat value={stats.totalCommits} label="Commits totales" />
           </Card>
           <Card>
-            <p className="text-xs text-slate-400">Repos</p>
-            <p className="text-2xl font-bold">{stats.repoCount}</p>
+            <Stat value={stats.repoCount} label="Repositorios" />
           </Card>
           <Card>
-            <p className="text-xs text-slate-400">Por dominio</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {stats.byDomain.length === 0 && <span className="text-sm text-slate-400">—</span>}
+            <p className="text-caption font-mono uppercase text-ink-500">Por dominio</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {stats.byDomain.length === 0 && (
+                <span className="text-body-sm text-ink-400">—</span>
+              )}
               {stats.byDomain.map((d) => (
-                <Badge key={d.key}>
-                  {d.emoji ? `${d.emoji} ` : ""}
+                <Badge key={d.key} tone="neutral" mono>
                   {d.label}: {d.count}
                 </Badge>
               ))}
@@ -124,33 +132,41 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       {/* Repos vinculados */}
       <Card>
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Repositorios vinculados</h3>
-          <Button onClick={openPicker}>+ Vincular repo de GitHub</Button>
+          <h3 className="text-h4 text-ink-900">Repositorios vinculados</h3>
+          <Button variant="secondary" size="sm" onClick={openPicker}>
+            + Vincular repo de GitHub
+          </Button>
         </div>
-        <div className="mt-3 divide-y divide-slate-100">
-          {repos.length === 0 && (
-            <p className="py-2 text-sm text-slate-400">
-              Aún no hay repos. Pulsa “Vincular repo de GitHub” y elige de tu lista.
-            </p>
-          )}
-          {repos.map((r) => (
-            <div key={r.id} className="flex items-center justify-between py-2">
-              <div className="text-sm">
-                <a
-                  href={r.url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium hover:underline"
-                >
-                  {r.owner}/{r.name}
-                </a>
-                <span className="ml-2 text-slate-400">{r._count.commits} commits</span>
-              </div>
-              <Button variant="danger" onClick={() => unlink(r.id)} className="!px-2 !py-1 text-xs">
-                Quitar
-              </Button>
+        <div className="mt-4">
+          {repos.length === 0 ? (
+            <EmptyState
+              title="Sin repositorios"
+              description='Pulsa "Vincular repo de GitHub" y elige de tu lista.'
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {repos.map((r) => (
+                <div key={r.id} className="flex items-center justify-between py-3 hover:bg-surface-50">
+                  <div>
+                    <a
+                      href={r.url ?? undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-body font-medium text-ink-900 hover:text-blue-600 hover:underline"
+                    >
+                      {r.owner}/{r.name}
+                    </a>
+                    <span className="ml-2 font-mono text-caption text-ink-400">
+                      {r._count.commits} commits
+                    </span>
+                  </div>
+                  <Button variant="danger" size="sm" onClick={() => unlink(r.id)}>
+                    Quitar
+                  </Button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
 
@@ -161,30 +177,33 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           onClick={() => setPicker(false)}
         >
           <div
-            className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-xl border border-line-200 bg-surface-0 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 p-4">
-              <h3 className="font-semibold">Tus repositorios de GitHub</h3>
-              <button className="text-slate-400 hover:text-slate-700" onClick={() => setPicker(false)}>
-                ✕
+            <div className="flex items-center justify-between border-b border-line-100 p-4">
+              <h3 className="text-h4 text-ink-900">Tus repositorios de GitHub</h3>
+              <button
+                className="text-body text-ink-400 transition-colors hover:text-ink-900"
+                onClick={() => setPicker(false)}
+              >
+                Cerrar
               </button>
             </div>
 
             {ghNotConnected ? (
               <div className="p-6 text-center">
-                <p className="text-sm text-slate-600">
+                <p className="text-body-sm text-ink-600">
                   Conéctate con GitHub para ver y elegir tus repositorios.
                 </p>
                 <a href={api.auth.githubUrl()}>
-                  <Button className="mt-3">Conectar con GitHub</Button>
+                  <Button className="mt-4">Conectar con GitHub</Button>
                 </a>
               </div>
             ) : ghLoading ? (
               <Spinner />
             ) : (
               <>
-                <div className="border-b border-slate-100 p-3">
+                <div className="border-b border-line-100 p-3">
                   <Input
                     autoFocus
                     placeholder="Buscar repo…"
@@ -192,29 +211,38 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
                     onChange={(e) => setQuery(e.target.value)}
                   />
                 </div>
-                <div className="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto">
+                <div className="max-h-[55vh] divide-y divide-line-100 overflow-y-auto">
                   {filtered.length === 0 && (
-                    <p className="p-4 text-sm text-slate-400">No hay repos que coincidan.</p>
+                    <p className="p-4 text-body-sm text-ink-400">No hay repos que coincidan.</p>
                   )}
                   {filtered.map((r) => {
                     const already = linkedKeys.has(r.fullName.toLowerCase());
                     return (
-                      <div key={r.fullName} className="flex items-center justify-between gap-3 p-3">
+                      <div
+                        key={r.fullName}
+                        className="flex items-center justify-between gap-3 p-3 hover:bg-surface-50"
+                      >
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
+                          <p className="truncate text-body font-medium text-ink-900">
                             {r.fullName}{" "}
-                            {r.private && <Badge>privado</Badge>}
+                            {r.private && (
+                              <Badge tone="neutral" mono>
+                                privado
+                              </Badge>
+                            )}
                           </p>
                           {r.description && (
-                            <p className="truncate text-xs text-slate-400">{r.description}</p>
+                            <p className="truncate text-body-sm text-ink-400">{r.description}</p>
                           )}
                         </div>
                         {already ? (
-                          <span className="shrink-0 text-xs text-slate-400">vinculado ✓</span>
+                          <Badge tone="success" dot>
+                            vinculado
+                          </Badge>
                         ) : (
                           <Button
-                            variant="ghost"
-                            className="!px-3 !py-1 text-xs"
+                            variant="secondary"
+                            size="sm"
                             disabled={linking === r.fullName}
                             onClick={() => linkFromGithub(r)}
                           >
@@ -233,27 +261,32 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Commits */}
       <Card>
-        <h3 className="font-semibold">Commits recientes</h3>
-        <div className="mt-3 space-y-2">
-          {commits.length === 0 && (
-            <p className="text-sm text-slate-400">
-              Sin commits todavía. Vincula un repo; los commits llegan por webhook de la GitHub App (o
-              con backfill).
-            </p>
-          )}
-          {commits.map((c) => (
-            <div key={c.id} className="flex items-start gap-3 border-b border-slate-100 pb-2">
-              <Badge>{c.domain}</Badge>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{c.message.split("\n")[0]}</p>
-                <p className="text-xs text-slate-400">
-                  {c.contributor.githubLogin} · {c.repo.owner}/{c.repo.name} ·{" "}
-                  {new Date(c.committedAt).toLocaleDateString()}
-                </p>
-              </div>
-              <code className="text-xs text-slate-400">{c.sha.slice(0, 7)}</code>
+        <h3 className="text-h4 text-ink-900">Commits recientes</h3>
+        <div className="mt-4">
+          {commits.length === 0 ? (
+            <EmptyState
+              title="Sin commits todavía"
+              description="Vincula un repo; los commits llegan por webhook de la GitHub App (o con backfill)."
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {commits.map((c) => (
+                <div key={c.id} className="flex items-start gap-3 py-3 hover:bg-surface-50">
+                  <Badge tone="neutral" mono>
+                    {c.domain}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-body text-ink-900">{c.message.split("\n")[0]}</p>
+                    <p className="mt-0.5 font-mono text-caption text-ink-400">
+                      {c.contributor.githubLogin} · {c.repo.owner}/{c.repo.name} ·{" "}
+                      {new Date(c.committedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <code className="font-mono text-caption text-ink-400">{c.sha.slice(0, 7)}</code>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
     </div>

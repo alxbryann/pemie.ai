@@ -1,14 +1,33 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type Epic, type UserStory } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Input, Select, Spinner } from "../../components/ui.js";
+import {
+  Badge,
+  type BadgeTone,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Input,
+  Select,
+  Spinner,
+} from "../../components/ui.js";
 
 const STATUSES = ["backlog", "ready", "in_progress", "review", "done"];
 const PRIORITIES = ["low", "medium", "high", "critical"];
-const PRIORITY_COLOR: Record<string, string> = {
-  low: "text-slate-500",
-  medium: "text-blue-600",
-  high: "text-amber-600",
-  critical: "text-red-600",
+
+const STATUS_TONE: Record<string, BadgeTone> = {
+  backlog: "neutral",
+  ready: "brand",
+  in_progress: "brand",
+  review: "warning",
+  done: "success",
+};
+
+const PRIORITY_TONE: Record<string, BadgeTone> = {
+  low: "neutral",
+  medium: "brand",
+  high: "warning",
+  critical: "danger",
 };
 
 export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
@@ -74,8 +93,8 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Nueva HU */}
       <Card>
-        <h3 className="font-semibold">Nueva Historia de Usuario</h3>
-        <form onSubmit={createStory} className="mt-3 space-y-2">
+        <h3 className="text-h4 text-ink-900">Nueva historia de usuario</h3>
+        <form onSubmit={createStory} className="mt-4 space-y-3">
           <div className="flex gap-2">
             <Input
               placeholder="Título (ej: Login con GitHub)"
@@ -92,8 +111,16 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
             <Button type="submit">Crear</Button>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
-            <Input placeholder="Como… (rol)" value={role} onChange={(e) => setRole(e.target.value)} />
-            <Input placeholder="quiero… (want)" value={want} onChange={(e) => setWant(e.target.value)} />
+            <Input
+              placeholder="Como… (rol)"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            />
+            <Input
+              placeholder="quiero… (want)"
+              value={want}
+              onChange={(e) => setWant(e.target.value)}
+            />
             <Input
               placeholder="para… (beneficio)"
               value={benefit}
@@ -105,42 +132,67 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Lista */}
       <Card>
-        <h3 className="font-semibold">Historias ({stories.length})</h3>
-        <div className="mt-3 space-y-2">
-          {stories.length === 0 && <p className="text-sm text-slate-400">Aún no hay historias.</p>}
-          {stories.map((s) => (
-            <div key={s.id} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2">
-              <div className="min-w-0">
-                <p className="text-sm">
-                  <Badge>{s.key}</Badge> <span className="font-medium">{s.title}</span>
-                </p>
-                {s.narrative?.role && (
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Como {s.narrative.role}, quiero {s.narrative.want} para {s.narrative.benefit}
-                  </p>
-                )}
-                <span className={`text-xs font-medium ${PRIORITY_COLOR[s.priority] ?? ""}`}>
-                  {s.priority}
-                </span>
-              </div>
-              <Select value={s.status} onChange={(e) => setStatus(s.id, e.target.value)}>
-                {STATUSES.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
-                ))}
-              </Select>
+        <h3 className="text-h4 text-ink-900">Historias ({stories.length})</h3>
+        <div className="mt-4">
+          {stories.length === 0 ? (
+            <EmptyState
+              title="Aún no hay historias"
+              description="Crea la primera historia de usuario para comenzar a organizar el trabajo."
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {stories.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-start justify-between gap-3 py-3 hover:bg-surface-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="brand" mono>
+                        {s.key}
+                      </Badge>
+                      <span className="text-body font-medium text-ink-900">{s.title}</span>
+                    </div>
+                    {s.narrative?.role && (
+                      <p className="mt-1 text-body-sm text-ink-500">
+                        Como {s.narrative.role}, quiero {s.narrative.want} para{" "}
+                        {s.narrative.benefit}
+                      </p>
+                    )}
+                    <div className="mt-1.5">
+                      <Badge tone={PRIORITY_TONE[s.priority] ?? "neutral"} mono>
+                        {s.priority}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge tone={STATUS_TONE[s.status] ?? "neutral"} dot>
+                      {s.status}
+                    </Badge>
+                    <Select
+                      value={s.status}
+                      onChange={(e) => setStatus(s.id, e.target.value)}
+                    >
+                      {STATUSES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
 
       {epics.length > 0 && (
         <Card>
-          <h3 className="font-semibold">Épicas</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <h3 className="text-h4 text-ink-900">Épicas</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
             {epics.map((e) => (
-              <Badge key={e.id}>
+              <Badge key={e.id} tone="brand">
                 {e.title} · {e._count.stories}
               </Badge>
             ))}

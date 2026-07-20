@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type Note, type Objective, type Report } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Input, Spinner, Textarea } from "../../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Input,
+  Spinner,
+  Stat,
+  Textarea,
+} from "../../components/ui.js";
 
 export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
   const [objective, setObjective] = useState<Objective | null>(null);
@@ -75,22 +85,25 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
       {/* Objetivo */}
       <Card>
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Objetivo del proyecto</h3>
+          <h3 className="text-h4 text-ink-900">Objetivo del proyecto</h3>
           {objective && (
-            <span className="text-xs text-slate-400">
+            <span className="font-mono text-caption text-ink-400">
               actualizado {new Date(objective.updatedAt).toLocaleDateString()}
             </span>
           )}
         </div>
         <Textarea
-          className="mt-2"
+          className="mt-3"
           rows={2}
           value={objText}
           onChange={(e) => setObjText(e.target.value)}
           placeholder="¿Qué persigue este proyecto?"
         />
-        <div className="mt-2">
-          <Button onClick={saveObjective} disabled={objText.trim() === (objective?.description ?? "")}>
+        <div className="mt-3">
+          <Button
+            onClick={saveObjective}
+            disabled={objText.trim() === (objective?.description ?? "")}
+          >
             Guardar objetivo
           </Button>
         </div>
@@ -98,34 +111,48 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Informes */}
       <Card>
-        <h3 className="font-semibold">Informes de avance</h3>
-        <div className="mt-3 space-y-2">
-          {reports.length === 0 && (
-            <p className="text-sm text-slate-400">
-              Sin informes. Los publica un agente vía MCP (o manualmente por API).
-            </p>
-          )}
-          {reports.map((r) => (
-            <div key={r.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <div>
-                <p className="text-sm font-medium">
-                  {r.date} <Badge>{r.scope}</Badge>{" "}
-                  {r.agent && <span className="text-xs text-slate-400">· {r.agent.name}</span>}
-                </p>
-                {r.verdict && <p className="text-sm text-slate-600">{r.verdict}</p>}
-              </div>
-              {r.score != null && (
-                <span className="text-lg font-bold text-brand">{Math.round(r.score)}</span>
-              )}
+        <h3 className="text-h4 text-ink-900">Informes de avance</h3>
+        <div className="mt-4">
+          {reports.length === 0 ? (
+            <EmptyState
+              title="Sin informes"
+              description="Los publica un agente vía MCP (o manualmente por API)."
+            />
+          ) : (
+            <div className="divide-y divide-line-100">
+              {reports.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-start justify-between gap-4 py-3 hover:bg-surface-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2 text-body">
+                      <span className="font-mono text-ink-600">{r.date}</span>
+                      <Badge tone="neutral" mono>
+                        {r.scope}
+                      </Badge>
+                      {r.agent && (
+                        <span className="text-body-sm text-ink-400">· {r.agent.name}</span>
+                      )}
+                    </p>
+                    {r.verdict && (
+                      <p className="mt-1 text-body-sm text-ink-600">{r.verdict}</p>
+                    )}
+                  </div>
+                  {r.score != null && (
+                    <Stat value={Math.round(r.score)} label="score" />
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
 
       {/* Notas */}
       <Card>
-        <h3 className="font-semibold">Notas</h3>
-        <form onSubmit={addNote} className="mt-3 flex gap-2">
+        <h3 className="text-h4 text-ink-900">Notas</h3>
+        <form onSubmit={addNote} className="mt-4 flex gap-2">
           <Input
             placeholder="Escribe una nota o pregunta…"
             value={noteText}
@@ -133,32 +160,44 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
           />
           <Button type="submit">Agregar</Button>
         </form>
-        <div className="mt-3 space-y-3">
-          {notes.length === 0 && <p className="text-sm text-slate-400">Sin notas.</p>}
-          {notes.map((n) => (
-            <div key={n.id} className="rounded-lg border border-slate-100 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm">{n.message}</p>
-                <Badge>{n.status === "processed" ? "respondida" : "pendiente"}</Badge>
-              </div>
-              {n.response ? (
-                <p className="mt-2 border-l-2 border-brand/40 pl-2 text-sm text-slate-600">
-                  {n.response}
-                </p>
-              ) : (
-                <div className="mt-2 flex gap-2">
-                  <Input
-                    placeholder="Responder…"
-                    value={answers[n.id] ?? ""}
-                    onChange={(e) => setAnswers((a) => ({ ...a, [n.id]: e.target.value }))}
-                  />
-                  <Button variant="ghost" onClick={() => answerNote(n.id)}>
-                    Responder
-                  </Button>
+        <div className="mt-4">
+          {notes.length === 0 ? (
+            <EmptyState title="Sin notas" />
+          ) : (
+            <div className="space-y-3">
+              {notes.map((n) => (
+                <div key={n.id} className="rounded-lg border border-line-200 bg-surface-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-body text-ink-900">{n.message}</p>
+                    <Badge
+                      tone={n.status === "processed" ? "success" : "warning"}
+                      dot
+                    >
+                      {n.status === "processed" ? "respondida" : "pendiente"}
+                    </Badge>
+                  </div>
+                  {n.response ? (
+                    <p className="mt-3 border-l-2 border-blue-600 pl-3 text-body-sm text-ink-600">
+                      {n.response}
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <Input
+                        placeholder="Responder…"
+                        value={answers[n.id] ?? ""}
+                        onChange={(e) =>
+                          setAnswers((a) => ({ ...a, [n.id]: e.target.value }))
+                        }
+                      />
+                      <Button variant="secondary" onClick={() => answerNote(n.id)}>
+                        Responder
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </Card>
     </div>

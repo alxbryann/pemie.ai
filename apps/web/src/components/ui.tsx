@@ -49,19 +49,20 @@ export function Button({
 }
 
 // Los inputs comparten el mismo tratamiento: radio sm, borde hairline, anillo azul de 3px.
+// Sin utilidad de ancho: cada control decide, para que `className` pueda sobreescribirlo.
 const CONTROL =
-  "w-full rounded-sm border border-line-200 bg-surface-0 px-3.5 py-2.5 text-body text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-blue-600 focus:shadow-focus disabled:bg-surface-50 disabled:text-ink-400";
+  "rounded-sm border border-line-200 bg-surface-0 px-3.5 py-2.5 text-body text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-blue-600 focus:shadow-focus disabled:bg-surface-50 disabled:text-ink-400";
 
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${CONTROL} ${className}`} {...props} />;
+  return <input className={`${CONTROL} w-full ${className}`} {...props} />;
 }
 
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${CONTROL} leading-snug ${className}`} {...props} />;
+  return <textarea className={`${CONTROL} w-full leading-snug ${className}`} {...props} />;
 }
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${CONTROL} w-auto ${className}`} {...props} />;
+  return <select className={`${CONTROL} ${className}`} {...props} />;
 }
 
 export function Field({
@@ -117,18 +118,24 @@ export function Switch({
 
 /* --------------------------------- display -------------------------------- */
 
+const CARD_PADDING = { sm: "p-3", md: "p-6", none: "" };
+
 export function Card({
   className = "",
   interactive = false,
+  padding = "md",
   children,
 }: {
   className?: string;
   interactive?: boolean;
+  padding?: keyof typeof CARD_PADDING;
   children: ReactNode;
 }) {
   return (
     <div
-      className={`rounded-lg border border-line-200 bg-surface-0 p-6 shadow-xs transition-[box-shadow,border-color,transform] duration-150 ${
+      className={`rounded-lg border border-line-200 bg-surface-0 shadow-xs transition-[box-shadow,border-color,transform] duration-150 ${
+        CARD_PADDING[padding]
+      } ${
         interactive ? "cursor-pointer hover:-translate-y-0.5 hover:border-ink-300 hover:shadow-md" : ""
       } ${className}`}
     >
@@ -351,11 +358,21 @@ export function EmptyState({
   title,
   description,
   action,
+  compact = false,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  compact?: boolean;
 }) {
+  // `compact` para huecos estrechos (columnas de tablero), donde el bloque completo pesa demasiado.
+  if (compact) {
+    return (
+      <p className="rounded-md border border-dashed border-line-200 px-3 py-5 text-center text-body-sm text-ink-400">
+        {title}
+      </p>
+    );
+  }
   return (
     <div className="rounded-lg border border-dashed border-line-200 bg-surface-50 px-6 py-12 text-center">
       <p className="text-h4 text-ink-900">{title}</p>

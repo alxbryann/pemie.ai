@@ -226,7 +226,7 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
               key={m.membershipId}
               className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
             >
-              <div className="grid h-8 w-8 flex-none place-items-center rounded-full bg-surface-100 text-caption font-semibold text-ink-700">
+              <div className="grid h-8 w-8 flex-none place-items-center rounded-pill bg-surface-100 text-caption font-semibold text-ink-700">
                 {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
