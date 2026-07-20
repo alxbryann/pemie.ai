@@ -95,13 +95,18 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
       <Card>
         <h3 className="text-h4 text-ink-900">Nueva historia de usuario</h3>
         <form onSubmit={createStory} className="mt-4 space-y-3">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Input
               placeholder="Título (ej: Login con GitHub)"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              aria-label="Título de historia"
             />
-            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <Select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              aria-label="Prioridad"
+            >
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -115,16 +120,19 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
               placeholder="Como… (rol)"
               value={role}
               onChange={(e) => setRole(e.target.value)}
+              aria-label="Rol"
             />
             <Input
               placeholder="quiero… (want)"
               value={want}
               onChange={(e) => setWant(e.target.value)}
+              aria-label="Quiero"
             />
             <Input
               placeholder="para… (beneficio)"
               value={benefit}
               onChange={(e) => setBenefit(e.target.value)}
+              aria-label="Beneficio"
             />
           </div>
         </form>
@@ -144,7 +152,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
               {stories.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-start justify-between gap-3 py-3 hover:bg-surface-50"
+                  className="flex items-start justify-between gap-3 -mx-6 px-6 py-3 hover:bg-surface-50"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
