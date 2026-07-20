@@ -148,8 +148,13 @@ export default function AgentTab({
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
               className="max-w-xs"
+              aria-label="Nombre de API key"
             />
-            <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+            <Select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              aria-label="Agente asociado"
+            >
               <option value="">— sin agente —</option>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -164,7 +169,7 @@ export default function AgentTab({
               {API_SCOPES.map((s) => (
                 <label
                   key={s}
-                  className={`cursor-pointer rounded-pill border px-2.5 py-1 font-mono text-mono-label font-medium uppercase transition-colors ${
+                  className={`cursor-pointer rounded-pill border px-2.5 py-1 font-mono text-caption font-medium transition-colors ${
                     scopes.includes(s)
                       ? "border-blue-600 bg-blue-100 text-blue-700"
                       : "border-line-200 bg-surface-100 text-ink-600 hover:border-ink-300"
@@ -191,7 +196,7 @@ export default function AgentTab({
 
         {newKey && (
           <div className="mt-4">
-            <p className="mb-2 text-body-sm font-medium text-amber-600">
+            <p className="mb-2 text-body-sm font-medium text-[#8a5e0a]">
               Copia esta key ahora — no se vuelve a mostrar.
             </p>
             <CodeBlock title="API KEY">{newKey}</CodeBlock>
@@ -213,7 +218,7 @@ export default function AgentTab({
               {keys.map((k) => (
                 <div
                   key={k.id}
-                  className="flex items-start justify-between gap-3 py-3 hover:bg-surface-50"
+                  className="flex items-start justify-between gap-3 -mx-6 px-6 py-3 hover:bg-surface-50"
                 >
                   <div className="min-w-0">
                     <p className="text-body font-medium text-ink-900">
@@ -252,6 +257,7 @@ export default function AgentTab({
             value={agentName}
             onChange={(e) => setAgentName(e.target.value)}
             className="max-w-xs"
+            aria-label="Nombre del agente"
           />
           <Button type="submit" variant="secondary">
             Añadir agente
@@ -283,7 +289,7 @@ export default function AgentTab({
               {logs.slice(0, 20).map((l) => (
                 <div
                   key={l.id}
-                  className="flex items-center justify-between py-2.5 hover:bg-surface-50"
+                  className="flex items-center justify-between -mx-6 px-6 py-2.5 hover:bg-surface-50"
                 >
                   <span className="flex items-center gap-2">
                     <Badge tone={l.actorType === "agent" ? "brand" : "neutral"} dot>
