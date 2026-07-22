@@ -253,7 +253,11 @@ export async function updateCard(userId: string, cardId: string, patch: UpdateCa
     if (!CARD_TYPES.includes(patch.type as CardType)) throw badRequest(`Tipo inválido: ${patch.type}`, "invalid_type");
     data.type = patch.type;
   }
-  if (patch.assigneeId !== undefined) data.assigneeId = patch.assigneeId;
+  if (patch.assigneeId !== undefined) {
+    data.assignee = patch.assigneeId
+      ? { connect: { id: patch.assigneeId } }
+      : { disconnect: true };
+  }
   if (patch.labels !== undefined) data.labels = asJson(patch.labels);
 
   return prisma.card.update({ where: { id: card.id }, data });
