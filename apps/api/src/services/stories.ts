@@ -283,3 +283,13 @@ export function opListContributors(projectId: string) {
     select: { id: true, githubLogin: true, name: true, avatarUrl: true },
   });
 }
+
+/** Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de la HU (ej. PRJ-123). */
+export async function opGetStoryCommitProgress(story: { id: string; projectId: string; key: string }) {
+  const commits = await prisma.commit.findMany({
+    where: { projectId: story.projectId, message: { contains: story.key, mode: "insensitive" } },
+    orderBy: { committedAt: "desc" },
+    select: { id: true, sha: true, message: true, committedAt: true },
+  });
+  return { storyId: story.id, key: story.key, commitCount: commits.length, commits };
+}

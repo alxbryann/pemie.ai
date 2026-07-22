@@ -356,6 +356,45 @@ const TOOLS: McpTool[] = [
       );
     },
   },
+  {
+    name: "link_story_to_card",
+    description: "Vincula una tarjeta existente del tablero a una Historia de Usuario sin tarjeta.",
+    scope: "board:write",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cardId: { type: "string" },
+        storyId: { type: "string" },
+      },
+      required: ["cardId", "storyId"],
+      additionalProperties: false,
+    },
+    handler: async (ctx, args) => {
+      const projectId = requireProject(ctx);
+      const card = await board.getCardWithProject(String(args.cardId));
+      if (!card || card.board.projectId !== projectId) throw forbidden("La tarjeta no pertenece a este proyecto");
+      const story = await stories.getStoryById(String(args.storyId));
+      if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
+      return board.opLinkStoryToCard(card, story, { actorType: "agent", actorId: ctx.key.agentId ?? ctx.key.id });
+    },
+  },
+  {
+    name: "get_story_commit_progress",
+    description: "Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de una HU (ej. PRJ-123).",
+    scope: "stories:read",
+    inputSchema: {
+      type: "object",
+      properties: { storyId: { type: "string" } },
+      required: ["storyId"],
+      additionalProperties: false,
+    },
+    handler: async (ctx, args) => {
+      const projectId = requireProject(ctx);
+      const story = await stories.getStoryById(String(args.storyId));
+      if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
+      return stories.opGetStoryCommitProgress(story);
+    },
+  },
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));

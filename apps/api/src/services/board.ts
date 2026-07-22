@@ -211,6 +211,24 @@ export async function opAssignCard(
   return updated;
 }
 
+/**
+ * Operación (ya autorizada): vincula una tarjeta existente a una HU sin tarjeta.
+ * Falla si la HU ya tiene otra tarjeta vinculada.
+ */
+export async function opLinkStoryToCard(
+  card: { id: string },
+  story: { id: string },
+  actor: CardActor
+) {
+  const existing = await prisma.card.findUnique({ where: { userStoryId: story.id } });
+  if (existing && existing.id !== card.id)
+    throw badRequest("Esa HU ya tiene una tarjeta", "story_has_card");
+
+  const updated = await prisma.card.update({ where: { id: card.id }, data: { userStoryId: story.id } });
+  await recordActivity(card.id, actor, "linked_story", null, story.id);
+  return updated;
+}
+
 export interface UpdateCardInput {
   title?: string;
   description?: string | null;

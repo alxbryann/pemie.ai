@@ -8,6 +8,7 @@ import { classifyCommit, DEFAULT_DOMAIN_CONFIG, type DomainConfig, type Role } f
 import { prisma } from "../db.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { requireMembership } from "./tenancy.js";
+import * as board from "./board.js";
 import {
   fetchRecentCommits,
   githubAppConfigured,
@@ -152,7 +153,69 @@ async function recordCommits(
     }),
     skipDuplicates: true,
   });
+
+  // Auto-mover cards del Kanban según palabras clave en el mensaje del commit
+  // (ej. "PRJ-123 fix: ..." -> mueve la card de esa HU a Revisión). Best effort:
+  // nunca debe hacer fallar la ingesta de commits.
+  try {
+    await autoMoveCardsFromCommits(repo.projectId, project.key, valid);
+  } catch (err) {
+    console.error("auto-move de cards desde commits falló (best effort)", err);
+  }
+
   return count;
+}
+
+/** Regla de palabras clave -> `order` de columna destino (ver DEFAULT_COLUMNS en board.ts). */
+const COMMIT_KEYWORD_RULES: { regex: RegExp; columnOrder: number }[] = [
+  { regex: /\b(fix|close|fixes|resolves)\b/i, columnOrder: 3 }, // Revisión
+  { regex: /\b(wip|progress|avance)\b/i, columnOrder: 2 }, // En progreso
+  { regex: /\b(review|pr|merge)\b/i, columnOrder: 3 }, // Revisión
+  { regex: /\bfeat\b/i, columnOrder: 2 }, // En progreso
+];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Primera regla que matchea el mensaje, o null si ninguna aplica. */
+function resolveTargetColumnOrder(message: string): number | null {
+  for (const rule of COMMIT_KEYWORD_RULES) {
+    if (rule.regex.test(message)) return rule.columnOrder;
+  }
+  return null;
+}
+
+/**
+ * Inspecciona los mensajes de commit en busca de referencias a HUs (`KEY-123`)
+ * y mueve su Card vinculada según palabras clave (fix/wip/review/feat...).
+ * Registra la actividad como actor "agent". Silencioso si la HU o su Card no existen.
+ */
+async function autoMoveCardsFromCommits(
+  projectId: string,
+  projectKey: string,
+  commits: NormalizedCommit[]
+) {
+  const keyPattern = new RegExp(`${escapeRegExp(projectKey)}-(\\d+)`, "i");
+  for (const c of commits) {
+    const message = c.message ?? "";
+    const keyMatch = message.match(keyPattern);
+    if (!keyMatch) continue;
+    const targetOrder = resolveTargetColumnOrder(message);
+    if (targetOrder == null) continue;
+
+    const key = `${projectKey}-${keyMatch[1]}`;
+    const story = await prisma.userStory.findUnique({ where: { projectId_key: { projectId, key } } });
+    if (!story) continue;
+
+    const card = await prisma.card.findUnique({ where: { userStoryId: story.id } });
+    if (!card) continue;
+
+    const column = await prisma.column.findFirst({ where: { boardId: card.boardId, order: targetOrder } });
+    if (!column || column.id === card.columnId) continue;
+
+    await board.opMoveCard(card, { columnId: column.id }, { actorType: "agent", actorId: null });
+  }
 }
 
 // ─── Webhook push ──────────────────────────────────────────────────────────
