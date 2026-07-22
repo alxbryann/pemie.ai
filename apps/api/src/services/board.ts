@@ -73,7 +73,10 @@ export async function opListBoard(projectId: string) {
         include: {
           cards: {
             orderBy: { order: "asc" },
-            include: { userStory: { select: { id: true, key: true, title: true, status: true } } },
+            include: {
+              userStory: { select: { id: true, key: true, title: true, status: true } },
+              assignee: { select: { id: true, githubLogin: true, name: true, avatarUrl: true } },
+            },
           },
         },
       },
@@ -191,6 +194,20 @@ export async function opMoveCard(
     data: { columnId: toColumn.id, order },
   });
   await recordActivity(card.id, actor, "moved", fromColumn?.name ?? null, toColumn.name);
+  return updated;
+}
+
+/**
+ * Operación (ya autorizada): reasigna una tarjeta y registra la actividad. Usada
+ * al sincronizar el assignee de la HU vinculada (ver stories.opAssignStory).
+ */
+export async function opAssignCard(
+  card: { id: string; assigneeId: string | null },
+  assigneeId: string | null,
+  actor: CardActor
+) {
+  const updated = await prisma.card.update({ where: { id: card.id }, data: { assigneeId } });
+  await recordActivity(card.id, actor, "assigned", card.assigneeId, assigneeId);
   return updated;
 }
 

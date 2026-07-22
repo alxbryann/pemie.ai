@@ -221,6 +221,8 @@ export interface UserStory {
   status: string;
   epicId: string | null;
   epic?: { id: string; title: string } | null;
+  assigneeId: string | null;
+  assignee?: Contributor | null;
   createdAt: string;
 }
 
@@ -264,6 +266,8 @@ export interface Card {
   description: string | null;
   userStoryId: string | null;
   userStory?: { id: string; key: string; title: string; status: string } | null;
+  assigneeId: string | null;
+  assignee?: Contributor | null;
 }
 export interface Column {
   id: string;

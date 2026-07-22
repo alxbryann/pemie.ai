@@ -156,16 +156,18 @@ model Repo {
 }
 
 model Contributor {
-  id          String   @id @default(cuid())
-  projectId   String
-  githubLogin String
-  name        String?
-  avatarUrl   String?
-  userId      String? // vinculado a un User si el contributor es miembro
-  createdAt   DateTime @default(now())
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user        User?    @relation(fields: [userId], references: [id])
-  commits     Commit[]
+  id              String      @id @default(cuid())
+  projectId       String
+  githubLogin     String
+  name            String?
+  avatarUrl       String?
+  userId          String? // vinculado a un User si el contributor es miembro
+  createdAt       DateTime    @default(now())
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User?       @relation(fields: [userId], references: [id])
+  commits         Commit[]
+  assignedStories UserStory[]
+  assignedCards   Card[]
 
   @@unique([projectId, githubLogin])
   @@index([projectId])
@@ -283,16 +285,19 @@ model UserStory {
   storyPoints        Int?
   status             String   @default("backlog")
   epicId             String?
+  assigneeId         String?
   createdById        String?
   createdByAgentId   String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
-  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  epic               Epic?    @relation(fields: [epicId], references: [id])
+  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  epic               Epic?        @relation(fields: [epicId], references: [id])
+  assignee           Contributor? @relation(fields: [assigneeId], references: [id])
   card               Card?
 
   @@unique([projectId, key])
   @@index([projectId, status])
+  @@index([assigneeId])
   @@map("user_stories")
 }
 
@@ -340,9 +345,11 @@ model Card {
   board       Board          @relation(fields: [boardId], references: [id], onDelete: Cascade)
   column      Column         @relation(fields: [columnId], references: [id], onDelete: Cascade)
   userStory   UserStory?     @relation(fields: [userStoryId], references: [id])
+  assignee    Contributor?   @relation(fields: [assigneeId], references: [id])
   activities  CardActivity[]
 
   @@index([boardId, columnId])
+  @@index([assigneeId])
   @@map("cards")
 }
 

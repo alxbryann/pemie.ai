@@ -12,6 +12,8 @@ import type {
 import { prisma } from "../db.js";
 import { badRequest, notFound } from "./errors.js";
 import { projectWithAccess } from "./ingest.js";
+import * as board from "./board.js";
+import type { CardActor } from "./board.js";
 
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 const STATUSES: UserStoryStatus[] = ["backlog", "ready", "in_progress", "review", "done"];
@@ -51,6 +53,7 @@ export interface CreateStoryInput {
   priority?: string;
   storyPoints?: number;
   epicId?: string;
+  assigneeId?: string;
   status?: string;
 }
 
@@ -62,6 +65,7 @@ export interface UpdateStoryInput {
   storyPoints?: number | null;
   status?: string;
   epicId?: string | null;
+  assigneeId?: string | null;
 }
 
 /** Actor que crea una HU: un usuario o un agente (F4 vía MCP). */
@@ -85,6 +89,13 @@ function validateStatus(s: string | undefined): UserStoryStatus {
 }
 
 const asJson = (v: unknown) => (v == null ? Prisma.JsonNull : (v as Prisma.InputJsonValue));
+
+/** Verifica que el contributor exista y pertenezca al proyecto de la HU. */
+async function validateAssignee(projectId: string, assigneeId: string) {
+  const contributor = await prisma.contributor.findUnique({ where: { id: assigneeId } });
+  if (!contributor || contributor.projectId !== projectId)
+    throw badRequest("El asignado no pertenece al proyecto", "assignee_mismatch");
+}
 
 /** Calcula la siguiente key (PRJ-N) a partir del prefijo del proyecto. */
 async function nextStoryKey(projectId: string, prefix: string): Promise<string> {
@@ -123,6 +134,7 @@ export async function opCreateStory(
     if (!epic || epic.projectId !== projectId)
       throw badRequest("La épica no pertenece al proyecto", "epic_mismatch");
   }
+  if (input.assigneeId) await validateAssignee(projectId, input.assigneeId);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const key = await nextStoryKey(projectId, project.key);
@@ -138,6 +150,7 @@ export async function opCreateStory(
           status,
           storyPoints: input.storyPoints ?? null,
           epicId: input.epicId ?? null,
+          assigneeId: input.assigneeId ?? null,
           createdById: actor.createdById ?? null,
           createdByAgentId: actor.createdByAgentId ?? null,
         },
@@ -170,7 +183,10 @@ export function opListStories(projectId: string, filter: ListStoriesFilter = {})
       ...(filter.epicId ? { epicId: filter.epicId } : {}),
     },
     orderBy: { createdAt: "desc" },
-    include: { epic: { select: { id: true, title: true } } },
+    include: {
+      epic: { select: { id: true, title: true } },
+      assignee: { select: { id: true, githubLogin: true, name: true, avatarUrl: true } },
+    },
   });
 }
 
@@ -221,5 +237,49 @@ export async function opUpdateStory(
       data.epic = { disconnect: true };
     }
   }
+  if (patch.assigneeId !== undefined) {
+    if (patch.assigneeId) {
+      await validateAssignee(story.projectId, patch.assigneeId);
+      data.assignee = { connect: { id: patch.assigneeId } };
+    } else {
+      data.assignee = { disconnect: true };
+    }
+  }
   return prisma.userStory.update({ where: { id: story.id }, data });
+}
+
+/**
+ * Operación (ya autorizada): asigna (o desasigna, si `assigneeId` es null) una
+ * HU a un contributor del proyecto. Si la HU tiene una Card vinculada, sincroniza
+ * su assigneeId y registra la actividad en CardActivity.
+ */
+export async function opAssignStory(storyId: string, assigneeId: string | null, actor: CardActor) {
+  const story = await getStoryById(storyId);
+  if (!story) throw notFound("HU no encontrada");
+  if (assigneeId) await validateAssignee(story.projectId, assigneeId);
+
+  const updated = await prisma.userStory.update({
+    where: { id: story.id },
+    data: { assigneeId },
+  });
+
+  const card = await prisma.card.findUnique({ where: { userStoryId: story.id } });
+  if (card) await board.opAssignCard(card, assigneeId, actor);
+
+  return updated;
+}
+
+/** Lista los contribuidores del proyecto, candidatos a asignar HUs/tarjetas (viewer+). */
+export async function listContributors(userId: string, projectId: string) {
+  await projectWithAccess(userId, projectId);
+  return opListContributors(projectId);
+}
+
+/** Operación (ya autorizada): lista los contribuidores del proyecto. */
+export function opListContributors(projectId: string) {
+  return prisma.contributor.findMany({
+    where: { projectId },
+    orderBy: { githubLogin: "asc" },
+    select: { id: true, githubLogin: true, name: true, avatarUrl: true },
+  });
 }

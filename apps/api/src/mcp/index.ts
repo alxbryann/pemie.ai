@@ -264,6 +264,37 @@ const TOOLS: McpTool[] = [
     },
   },
   {
+    name: "assign_user_story",
+    description: "Asigna (o desasigna, con assigneeId null) una HU a un contributor del proyecto; sincroniza la Card vinculada.",
+    scope: "stories:write",
+    inputSchema: {
+      type: "object",
+      properties: {
+        storyId: { type: "string" },
+        assigneeId: { type: ["string", "null"] },
+      },
+      required: ["storyId"],
+      additionalProperties: false,
+    },
+    handler: async (ctx, args) => {
+      const projectId = requireProject(ctx);
+      const story = await stories.getStoryById(String(args.storyId));
+      if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
+      const assigneeId = args.assigneeId == null ? null : String(args.assigneeId);
+      return stories.opAssignStory(story.id, assigneeId, {
+        actorType: "agent",
+        actorId: ctx.key.agentId ?? ctx.key.id,
+      });
+    },
+  },
+  {
+    name: "list_contributors",
+    description: "Lista los contribuidores del proyecto (candidatos a asignar HUs/tarjetas).",
+    scope: "stories:read",
+    inputSchema: OBJECT_SCHEMA,
+    handler: (ctx) => stories.opListContributors(requireProject(ctx)),
+  },
+  {
     name: "list_board",
     description: "Devuelve el tablero Kanban con columnas y tarjetas.",
     scope: "board:read",

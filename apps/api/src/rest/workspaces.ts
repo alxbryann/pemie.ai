@@ -78,6 +78,7 @@ const createStorySchema = z.object({
   priority: z.enum(["low", "medium", "high", "critical"]).optional(),
   storyPoints: z.number().int().optional(),
   epicId: z.string().optional(),
+  assigneeId: z.string().optional(),
   status: z.string().optional(),
 });
 const updateStorySchema = z.object({
@@ -88,6 +89,7 @@ const updateStorySchema = z.object({
   storyPoints: z.number().int().nullable().optional(),
   status: z.string().optional(),
   epicId: z.string().nullable().optional(),
+  assigneeId: z.string().nullable().optional(),
 });
 const createCardSchema = z.object({
   title: z.string().min(1),
