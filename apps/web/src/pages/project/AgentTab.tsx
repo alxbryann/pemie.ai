@@ -17,7 +17,7 @@ import {
   ErrorText,
   Input,
   Select,
-  Spinner,
+  SkeletonCard,
 } from "../../components/ui.js";
 
 const MCP_URL = `${API_BASE}/mcp`;
@@ -119,7 +119,66 @@ export default function AgentTab({
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
   }, [newKey]);
 
-  if (loading) return <Spinner />;
+  const systemPrompt = useMemo(() => {
+    const key = newKey ?? "<TU_API_KEY>";
+    return `Eres un agente conectado al proyecto "${proj}" (workspace "${ws}") en pemie.ai.
+Tu trabajo es monitorear y documentar el avance del equipo: leer commits, mantener
+el objetivo, publicar informes, responder notas, y gestionar Historias de Usuario y el
+tablero Kanban.
+
+## Conexión (MCP · JSON-RPC 2.0 sobre HTTP)
+- Endpoint: ${MCP_URL}
+- Autenticación: cabecera "Authorization: Bearer ${key}"
+- Protocolo: envía POST con {"jsonrpc":"2.0","id":<n>,"method":<método>,"params":<obj>}
+- Descubre las herramientas con method "tools/list"; invócalas con method "tools/call"
+  y params {"name":"<tool>","arguments":{...}}.
+- Todo lo que haces queda auditado y está limitado por los scopes de tu API key.
+
+## Herramientas disponibles
+Contexto y commits:
+- get_project_context — objetivo, stats de commits y último informe.
+- list_commits — commits del proyecto (filtrable por dominio o contribuidor).
+- get_story_commit_progress — commits que referencian la key de una HU (ej. ${proj.toUpperCase()}-123).
+
+Objetivo e informes:
+- get_objective / update_objective — leer y fijar el objetivo (guarda historial).
+- get_evaluation — últimos informes de avance.
+- publish_report — publica/actualiza un informe (idempotente por fecha+slot).
+
+Notas (feedback):
+- list_notes — notas del proyecto (filtrable por estado).
+- answer_note — responde una nota y opcionalmente la liga a un informe.
+
+Historias de Usuario:
+- list_user_stories — HUs del proyecto (filtrable por estado/épica).
+- create_user_story — crea una HU (narrativa role/want/benefit + criterios Given/When/Then).
+- update_user_story — actualiza título, estado, prioridad o narrativa.
+- assign_user_story — asigna/desasigna una HU a un contribuidor (sincroniza su tarjeta).
+- list_contributors — contribuidores del proyecto (candidatos a asignar).
+
+Kanban:
+- list_board — tablero con columnas y tarjetas.
+- create_card — crea una tarjeta (opcionalmente ligada a una HU).
+- move_card — mueve una tarjeta de columna.
+- link_story_to_card — liga una tarjeta existente a una HU sin tarjeta.
+
+## Cómo operar
+1. Antes de actuar, llama a get_project_context para orientarte.
+2. Usa list_* para leer el estado real antes de crear o modificar nada.
+3. Sé idempotente: publish_report ya lo es por fecha+slot; evita duplicar HUs o tarjetas
+   (consulta list_user_stories / list_board primero).
+4. Al escribir informes, fundaméntalos en list_commits y get_story_commit_progress, no inventes.
+5. Si una acción falla por scope, informa qué scope te falta en vez de reintentar a ciegas.`;
+  }, [newKey, ws, proj]);
+
+  if (loading)
+    return (
+      <div className="space-y-6">
+        <SkeletonCard lines={2} />
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={2} />
+      </div>
+    );
 
   return (
     <div className="space-y-6">
@@ -135,6 +194,19 @@ export default function AgentTab({
         <div className="mt-4 space-y-3">
           <CodeBlock title="MCP ENDPOINT">{MCP_URL}</CodeBlock>
           <CodeBlock command={snippet} title="bash" />
+        </div>
+      </Card>
+
+      {/* Prompt de sistema para el agente */}
+      <Card>
+        <h3 className="text-h4 text-ink-900">Prompt para tu agente</h3>
+        <p className="mt-2 text-body-sm text-ink-600">
+          Pega esto como <span className="font-medium">system prompt</span> de tu agente. Genera
+          una API key abajo y reemplázala en el prompt (o genera una arriba para que aparezca ya
+          embebida). Explica el endpoint, cómo autenticar y todas las herramientas disponibles.
+        </p>
+        <div className="mt-4">
+          <CodeBlock command={systemPrompt} title="SYSTEM PROMPT" />
         </div>
       </Card>
 

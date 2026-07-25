@@ -10,7 +10,8 @@ import {
   Field,
   Input,
   PageHeader,
-  Spinner,
+  Skeleton,
+  SkeletonList,
 } from "../components/ui.js";
 
 export default function Workspaces() {
@@ -45,7 +46,14 @@ export default function Workspaces() {
     }
   }
 
-  if (!workspaces) return <Spinner />;
+  if (!workspaces)
+    return (
+      <div>
+        <Skeleton className="mb-2 h-3 w-24" />
+        <Skeleton className="mb-6 h-9 w-64" />
+        <SkeletonList rows={3} />
+      </div>
+    );
 
   return (
     <div>

@@ -6,10 +6,12 @@ import {
   Button,
   Card,
   EmptyState,
+  Skeleton,
+  SkeletonCard,
+  SkeletonList,
   ErrorText,
   Input,
   Select,
-  Spinner,
 } from "../../components/ui.js";
 
 const STATUSES = ["backlog", "ready", "in_progress", "review", "done"];
@@ -85,7 +87,16 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
     await api.stories.update(ws, proj, id, { status }).catch(() => load());
   }
 
-  if (loading) return <Spinner />;
+  if (loading)
+    return (
+      <div className="space-y-6">
+        <SkeletonCard lines={2} />
+        <Card>
+          <Skeleton className="mb-4 h-5 w-32" />
+          <SkeletonList rows={4} />
+        </Card>
+      </div>
+    );
 
   return (
     <div className="space-y-6">

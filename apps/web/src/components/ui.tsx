@@ -393,6 +393,95 @@ export function Spinner() {
   );
 }
 
+// ─── Skeletons ──────────────────────────────────────────────────────────────
+// Placeholders con la FORMA del contenido final (no un spinner). Ver CLAUDE.md:
+// toda carga asíncrona de contenido usa skeletons que imitan el layout para
+// evitar saltos cuando llegan los datos.
+
+/** Primitiva base: caja con pulso. Ajusta tamaño/forma vía className. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={`animate-pulse rounded-sm bg-line-100 ${className}`}
+    />
+  );
+}
+
+/** Líneas de texto simuladas; la última sale más corta. */
+export function SkeletonText({ lines = 3, className = "" }: { lines?: number; className?: string }) {
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton key={i} className={`h-3.5 ${i === lines - 1 ? "w-2/3" : "w-full"}`} />
+      ))}
+    </div>
+  );
+}
+
+/** Una tarjeta skeleton (título + cuerpo) dentro de un Card real. */
+export function SkeletonCard({ lines = 3 }: { lines?: number }) {
+  return (
+    <Card>
+      <Skeleton className="mb-4 h-5 w-40" />
+      <SkeletonText lines={lines} />
+    </Card>
+  );
+}
+
+/** Lista de filas skeleton (para listas de commits, HUs, informes, keys…). */
+export function SkeletonList({ rows = 4, className = "" }: { rows?: number; className?: string }) {
+  return (
+    <div className={`divide-y divide-line-100 ${className}`}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 py-3.5">
+          <Skeleton className="h-9 w-9 rounded-pill" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+          <Skeleton className="h-6 w-16 rounded-pill" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Fila de stats skeleton (para dashboards con Stat). */
+export function SkeletonStats({ count = 3 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-md border border-line-200 bg-surface-0 p-4">
+          <Skeleton className="mb-3 h-3 w-20" />
+          <Skeleton className="h-7 w-14" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Tablero Kanban skeleton (columnas con tarjetas). */
+export function SkeletonBoard({ columns = 4 }: { columns?: number }) {
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-2">
+      {Array.from({ length: columns }).map((_, i) => (
+        <div key={i} className="w-72 shrink-0 rounded-md border border-line-200 bg-surface-50 p-3">
+          <Skeleton className="mb-3 h-4 w-24" />
+          <div className="space-y-2.5">
+            {Array.from({ length: 3 - (i % 2) }).map((_, j) => (
+              <div key={j} className="rounded-sm border border-line-100 bg-surface-0 p-3">
+                <Skeleton className="mb-2 h-3.5 w-full" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Marca: apertura azul + wordmark en Sora 700, siempre en minúsculas, ".ai" en acento.
 export function LogoMark({ size = 28 }: { size?: number }) {
   return (

@@ -8,7 +8,7 @@ import {
   ErrorText,
   Input,
   Select,
-  Spinner,
+  SkeletonBoard,
 } from "../../components/ui.js";
 
 export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
@@ -53,7 +53,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     await load();
   }
 
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonBoard />;
   if (!board) return <ErrorText>No se pudo cargar el tablero.</ErrorText>;
 
   return (

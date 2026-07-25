@@ -17,6 +17,11 @@ const schema = z.object({
   GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
+
+  // Envío de correo (invitaciones). Si RESEND_API_KEY está vacío, el mailer
+  // cae a modo dev: registra el link de aceptación en consola en vez de enviar.
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().default("pemie.ai <onboarding@resend.dev>"),
 });
 
 export type Env = z.infer<typeof schema>;

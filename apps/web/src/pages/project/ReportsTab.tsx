@@ -7,7 +7,8 @@ import {
   EmptyState,
   ErrorText,
   Input,
-  Spinner,
+  SkeletonCard,
+  SkeletonList,
   Stat,
   Textarea,
 } from "../../components/ui.js";
@@ -76,7 +77,13 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
     await load();
   }
 
-  if (loading) return <Spinner />;
+  if (loading)
+    return (
+      <div className="space-y-6">
+        <SkeletonCard lines={2} />
+        <SkeletonList rows={4} />
+      </div>
+    );
 
   return (
     <div className="space-y-6">

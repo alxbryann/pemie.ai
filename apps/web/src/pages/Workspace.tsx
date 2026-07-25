@@ -181,6 +181,18 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function inviteLink(token: string) {
+    return `${window.location.origin}/invite/${token}`;
+  }
+
+  async function copyLink(id: string, token: string) {
+    await navigator.clipboard?.writeText(inviteLink(token)).catch(() => {});
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1400);
+  }
 
   async function load() {
     const membersRes = await api.workspaces.members(slug);
@@ -201,7 +213,8 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
     setBusy(true);
     setError(null);
     try {
-      await api.workspaces.invite(slug, email);
+      const res = await api.workspaces.invite(slug, email);
+      setLastInvite(res.invitation);
       setEmail("");
       await load();
     } catch (err) {
@@ -262,6 +275,40 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
             <ErrorText>{error}</ErrorText>
           </div>
 
+          {lastInvite && (
+            <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
+              <p className="text-body-sm text-ink-700">
+                {lastInvite.emailDelivered
+                  ? `Invitación enviada por correo a ${lastInvite.email}.`
+                  : lastInvite.emailPreviewUrl
+                    ? `Invitación enviada al buzón de prueba (Ethereal). No llega al inbox real de ${lastInvite.email}, pero puedes ver el correo aquí:`
+                    : `Invitación creada — comparte este enlace con ${lastInvite.email}:`}
+              </p>
+              {lastInvite.emailPreviewUrl && (
+                <a
+                  href={lastInvite.emailPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-body-sm font-medium text-blue-600 underline"
+                >
+                  Ver correo enviado →
+                </a>
+              )}
+              <div className="mt-2 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded bg-white px-2 py-1.5 font-mono text-caption text-ink-700">
+                  {inviteLink(lastInvite.token)}
+                </code>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => copyLink(lastInvite.id, lastInvite.token)}
+                >
+                  {copiedId === lastInvite.id ? "copiado" : "copiar link"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {invitations.length > 0 && (
             <ul className="mt-4 divide-y divide-line-100 border-t border-line-100 pt-3">
               {invitations.map((inv) => (
@@ -271,6 +318,15 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
                   </span>
                   <Badge tone={invStatusTone(inv.status)} dot>{inv.status}</Badge>
                   <Badge tone="neutral" mono>{inv.role}</Badge>
+                  {inv.status === "pending" && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyLink(inv.id, inv.token)}
+                    >
+                      {copiedId === inv.id ? "copiado" : "copiar link"}
+                    </Button>
+                  )}
                   <Button variant="danger" size="sm" onClick={() => onRevoke(inv.id)}>
                     revocar
                   </Button>

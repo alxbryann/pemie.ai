@@ -14,7 +14,9 @@ import {
   EmptyState,
   ErrorText,
   Input,
-  Spinner,
+  Skeleton,
+  SkeletonStats,
+  SkeletonList,
   Stat,
 } from "../../components/ui.js";
 
@@ -98,7 +100,16 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
     return q ? ghRepos.filter((r) => r.fullName.toLowerCase().includes(q)) : ghRepos;
   }, [ghRepos, query]);
 
-  if (loading) return <Spinner />;
+  if (loading)
+    return (
+      <div className="space-y-6">
+        <SkeletonStats count={3} />
+        <Card>
+          <Skeleton className="mb-4 h-5 w-40" />
+          <SkeletonList rows={5} />
+        </Card>
+      </div>
+    );
 
   return (
     <div className="space-y-6">
@@ -200,7 +211,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
                 </a>
               </div>
             ) : ghLoading ? (
-              <Spinner />
+              <SkeletonList rows={4} className="p-3" />
             ) : (
               <>
                 <div className="border-b border-line-100 p-3">

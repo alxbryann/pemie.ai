@@ -4,8 +4,10 @@
 import { randomBytes } from "node:crypto";
 import type { Role } from "@pemie/shared";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import { badRequest, conflict, forbidden, notFound } from "./errors.js";
 import { uniqueSlug } from "../lib/slug.js";
+import { sendInvitationEmail } from "./mailer.js";
 
 const ROLE_RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 días
@@ -110,7 +112,7 @@ export async function createInvitation(
   }
 
   const token = randomBytes(24).toString("hex");
-  return prisma.invitation.create({
+  const invitation = await prisma.invitation.create({
     data: {
       workspaceId,
       email: normalized,
@@ -119,6 +121,25 @@ export async function createInvitation(
       expiresAt: new Date(Date.now() + INVITE_TTL_MS),
     },
   });
+
+  // Enlace de aceptación (ruta del frontend). Se envía por correo y también se
+  // devuelve para que el owner pueda compartirlo manualmente si hace falta.
+  const acceptUrl = `${env.WEB_ORIGIN}/invite/${token}`;
+
+  // Envío best-effort: un fallo de correo no debe tumbar la invitación.
+  const [workspace, inviter] = await Promise.all([
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+  ]);
+  const { delivered, previewUrl } = await sendInvitationEmail({
+    to: normalized,
+    acceptUrl,
+    workspaceName: workspace?.name ?? "un workspace",
+    inviterName: inviter?.name ?? inviter?.email ?? "Alguien",
+    role,
+  });
+
+  return { ...invitation, acceptUrl, emailDelivered: delivered, emailPreviewUrl: previewUrl };
 }
 
 /** Lista invitaciones pendientes (owner/admin). */

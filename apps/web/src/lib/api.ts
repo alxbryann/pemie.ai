@@ -100,6 +100,11 @@ export interface Invitation {
   status: string;
   expiresAt: string;
   createdAt: string;
+  /** Presentes solo en la respuesta de creación. */
+  acceptUrl?: string;
+  emailDelivered?: boolean;
+  /** URL de vista previa del email (cuando se usa el proveedor de prueba Ethereal). */
+  emailPreviewUrl?: string;
 }
 
 export interface InvitationDetail {
