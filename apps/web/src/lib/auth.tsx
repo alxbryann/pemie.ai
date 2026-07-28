@@ -49,6 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/**
+ * Sanea la ruta de retorno tras autenticarse (`?next=`): solo rutas relativas
+ * de esta app, nunca URLs absolutas (evita redirigir a un dominio ajeno).
+ */
+export function safeNextPath(raw: string | null | undefined): string {
+  if (!raw) return "/";
+  const path = raw.trim();
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/";
+  return path;
+}
+
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth debe usarse dentro de <AuthProvider>");

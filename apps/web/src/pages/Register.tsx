@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../lib/auth.js";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { safeNextPath, useAuth } from "../lib/auth.js";
 import { ApiError } from "../lib/api.js";
 import { Button, ErrorText, Field, Input } from "../components/ui.js";
 import { AuthShell } from "./Login.js";
@@ -8,6 +8,9 @@ import { AuthShell } from "./Login.js";
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Destino tras crear la cuenta (p. ej. volver a aceptar una invitación).
+  const next = safeNextPath(params.get("next"));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +23,7 @@ export default function Register() {
     setBusy(true);
     try {
       await register(email, password, name || undefined);
-      navigate("/");
+      navigate(next, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo crear la cuenta");
     } finally {
@@ -55,7 +58,10 @@ export default function Register() {
 
       <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿Ya tienes cuenta?{" "}
-        <Link to="/login" className="font-medium text-blue-600 hover:underline">
+        <Link
+          to={next === "/" ? "/login" : `/login?next=${encodeURIComponent(next)}`}
+          className="font-medium text-blue-600 hover:underline"
+        >
           Entra
         </Link>
       </p>

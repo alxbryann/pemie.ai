@@ -9,6 +9,8 @@ export default function AcceptInvite() {
   const { token = "" } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Ruta a la que volver tras autenticarse, para retomar la invitación.
+  const backHere = encodeURIComponent(`/invite/${token}`);
   const [detail, setDetail] = useState<InvitationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,11 +59,15 @@ export default function AcceptInvite() {
             <span className="font-medium text-ink-900">{detail.email}</span> para aceptar la
             invitación.
           </p>
-          <Button
-            className="w-full"
-            onClick={() => navigate(`/login?next=/invite/${token}`)}
-          >
+          <Button className="w-full" onClick={() => navigate(`/login?next=${backHere}`)}>
             Iniciar sesión
+          </Button>
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => navigate(`/register?next=${backHere}`)}
+          >
+            Crear cuenta
           </Button>
         </div>
       ) : (

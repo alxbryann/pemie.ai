@@ -11,7 +11,7 @@
 // `delivered: false` + `previewUrl` (es preview, no entrega real).
 
 import nodemailer, { type Transporter } from "nodemailer";
-import { env } from "../env.js";
+import { env, isProd } from "../env.js";
 
 export interface SendEmailInput {
   to: string;
@@ -79,7 +79,18 @@ export async function sendEmail(input: SendEmailInput): Promise<SendResult> {
     }
   }
 
-  // Fallback cero-config: Ethereal.
+  // En producción no se cae a Ethereal: es un buzón de prueba y el SMTP
+  // saliente suele estar bloqueado en serverless (colgaría la petición). La
+  // invitación se crea igual y se comparte por su `acceptUrl`.
+  if (isProd) {
+    console.warn(
+      "📧 [mailer] Sin RESEND_API_KEY en producción: no se envía correo. " +
+        "Comparte el link de invitación manualmente o configura la key."
+    );
+    return { delivered: false };
+  }
+
+  // Fallback cero-config en dev: Ethereal.
   try {
     const transport = await getEtherealTransport();
     const info = await transport.sendMail({

@@ -5,15 +5,19 @@ import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { env } from "../env.js";
+import { isProd } from "../env.js";
 import * as auth from "../services/auth.js";
 import { badRequest } from "../services/errors.js";
 import {
   type AppEnv,
+  type AppContext,
   requireUser,
   setSessionCookie,
   clearSessionCookie,
   SESSION_COOKIE,
+  apiOrigin,
+  webOrigin,
+  safeNextPath,
 } from "./http.js";
 import * as ingest from "../services/ingest.js";
 import {
@@ -24,6 +28,10 @@ import {
 } from "../lib/github-oauth.js";
 
 const OAUTH_STATE_COOKIE = "pemie_oauth_state";
+// Ruta a la que volver al terminar el OAuth (la elige el front con ?next=).
+// Va en cookie httpOnly, no en el `state`, para no exponerla en la URL de GitHub.
+const OAUTH_NEXT_COOKIE = "pemie_oauth_next";
+const OAUTH_TTL_SECONDS = 600;
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
@@ -66,19 +74,25 @@ export function authRoutes() {
   });
 
   // ─── GitHub OAuth ──────────────────────────────────────────────────
-  const redirectUri = `${publicApiOrigin()}/api/auth/github/callback`;
+  // El redirect_uri se deriva del origen de la petición (o de PUBLIC_API_URL):
+  // así el mismo código sirve en local, en producción y en los previews, sin
+  // que quede hardcodeado un localhost. Debe coincidir en /github y /callback.
+  const callbackUri = (c: AppContext) => `${apiOrigin(c)}/api/auth/github/callback`;
 
   app.get("/github", (c) => {
     if (!githubOAuthConfigured())
       return c.json({ error: "GitHub OAuth no está configurado" }, 501);
     const state = randomBytes(16).toString("hex");
-    setCookie(c, OAUTH_STATE_COOKIE, state, {
+    const cookieOpts = {
       httpOnly: true,
-      sameSite: "Lax",
+      sameSite: "Lax" as const,
+      secure: isProd,
       path: "/",
-      maxAge: 600,
-    });
-    return c.redirect(githubAuthorizeUrl(state, redirectUri));
+      maxAge: OAUTH_TTL_SECONDS,
+    };
+    setCookie(c, OAUTH_STATE_COOKIE, state, cookieOpts);
+    setCookie(c, OAUTH_NEXT_COOKIE, safeNextPath(c.req.query("next")), cookieOpts);
+    return c.redirect(githubAuthorizeUrl(state, callbackUri(c)));
   });
 
   // Repos de GitHub del usuario autenticado (para el selector de vinculación).
@@ -88,28 +102,26 @@ export function authRoutes() {
   });
 
   app.get("/github/callback", async (c) => {
+    const front = webOrigin(c);
     const code = c.req.query("code");
     const state = c.req.query("state");
     const expected = getCookie(c, OAUTH_STATE_COOKIE);
+    const next = safeNextPath(getCookie(c, OAUTH_NEXT_COOKIE));
     deleteCookie(c, OAUTH_STATE_COOKIE, { path: "/" });
+    deleteCookie(c, OAUTH_NEXT_COOKIE, { path: "/" });
     if (!code || !state || state !== expected)
-      return c.redirect(`${env.WEB_ORIGIN}/login?error=oauth_state`);
+      return c.redirect(`${front}/login?error=oauth_state`);
     try {
-      const accessToken = await exchangeCode(code, redirectUri);
+      const accessToken = await exchangeCode(code, callbackUri(c));
       const profile = await fetchProfile(accessToken);
       const { token, expiresAt } = await auth.loginWithGithub({ ...profile, accessToken });
       setSessionCookie(c, token, expiresAt);
-      return c.redirect(`${env.WEB_ORIGIN}/`);
+      return c.redirect(`${front}${next}`);
     } catch (err) {
       console.error("GitHub OAuth callback error:", err);
-      return c.redirect(`${env.WEB_ORIGIN}/login?error=oauth_failed`);
+      return c.redirect(`${front}/login?error=oauth_failed`);
     }
   });
 
   return app;
-}
-
-/** Origen público del API para construir el redirect_uri de OAuth. */
-function publicApiOrigin(): string {
-  return env.PUBLIC_API_URL ?? `http://localhost:${env.PORT}`;
 }

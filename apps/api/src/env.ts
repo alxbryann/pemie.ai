@@ -5,8 +5,17 @@ const schema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(16).default("dev-session-secret-change-me-please"),
-  WEB_ORIGIN: z.string().default("http://localhost:5173"),
-  // Origen público del API (para construir redirect_uri de OAuth en prod).
+
+  // Origen del frontend. En el deploy monolítico de Vercel (front + API en el
+  // mismo dominio) no hace falta setearlo: se resuelve del dominio del deploy y
+  // los redirects de OAuth usan el origen de la petición, así los *previews*
+  // también funcionan. Setéalo solo si el front vive en otro dominio.
+  WEB_ORIGIN: z.string().optional(),
+  // Orígenes extra con permiso de CORS (coma-separados), p. ej. un dominio
+  // propio adicional o un front local apuntando al API de staging.
+  WEB_ORIGINS: z.string().optional(),
+  // Origen público del API. Solo necesario si el API está detrás de un proxy
+  // que no reenvía x-forwarded-host; si no, se deriva de la petición.
   PUBLIC_API_URL: z.string().optional(),
 
   GITHUB_OAUTH_CLIENT_ID: z.string().optional(),
@@ -19,13 +28,47 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
 
   // Envío de correo (invitaciones). Si RESEND_API_KEY está vacío, el mailer
-  // cae a modo dev: registra el link de aceptación en consola en vez de enviar.
+  // cae a modo dev: usa un buzón de prueba (Ethereal) y loguea el preview.
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default("pemie.ai <onboarding@resend.dev>"),
 });
 
-export type Env = z.infer<typeof schema>;
+const parsed = schema.parse(process.env);
 
-export const env: Env = schema.parse(process.env);
+export const isProd = parsed.NODE_ENV === "production";
 
-export const isProd = env.NODE_ENV === "production";
+/** Quita slashes finales para poder concatenar rutas sin duplicarlos. */
+function normalizeOrigin(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/**
+ * Dominio del deploy en Vercel, conocido solo en runtime. Sirve de default de
+ * WEB_ORIGIN para que un deploy sin configurar no acabe apuntando a localhost
+ * (que era exactamente el bug de "en prod el login intenta entrar en local").
+ */
+function vercelOrigin(): string | undefined {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return host ? `https://${host}` : undefined;
+}
+
+/** true si WEB_ORIGIN vino de configuración explícita (no de un default). */
+export const webOriginConfigured = Boolean(parsed.WEB_ORIGIN?.trim());
+
+const webOrigin = normalizeOrigin(
+  parsed.WEB_ORIGIN?.trim() || vercelOrigin() || "http://localhost:5173"
+);
+
+export type Env = z.infer<typeof schema> & { WEB_ORIGIN: string };
+
+/** Config validada. WEB_ORIGIN ya viene resuelto y normalizado. */
+export const env: Env = { ...parsed, WEB_ORIGIN: webOrigin };
+
+/** Orígenes con permiso para llamar al API con credenciales (CORS). */
+export const allowedOrigins: string[] = Array.from(
+  new Set(
+    [webOrigin, vercelOrigin(), ...(parsed.WEB_ORIGINS?.split(",") ?? [])]
+      .filter((o): o is string => Boolean(o?.trim()))
+      .map(normalizeOrigin)
+  )
+);

@@ -3,10 +3,20 @@
 
 import type { Role } from "@pemie/shared";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+// En producción el front y el API comparten dominio (el API corre como función
+// de Vercel bajo /api), así que la base es relativa: la cookie de sesión es
+// first-party y no hay CORS. En dev el API vive en otro puerto. VITE_API_URL
+// manda si está seteada (útil si algún día el API se separa de dominio).
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const API_URL = configuredApiUrl
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : import.meta.env.DEV
+    ? "http://localhost:4000"
+    : "";
 
-/** Base pública del API (para construir el endpoint MCP, enlaces, etc.). */
-export const API_BASE = API_URL;
+/** Base pública absoluta del API (para mostrar el endpoint MCP, enlaces, etc.). */
+export const API_BASE =
+  API_URL || (typeof window !== "undefined" ? window.location.origin : "");
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -299,7 +309,9 @@ export const api = {
     login: (input: { email: string; password: string }) =>
       post<{ user: User }>("/api/auth/login", input),
     logout: () => post<{ ok: true }>("/api/auth/logout"),
-    githubUrl: () => `${API_URL}/api/auth/github`,
+    /** URL para iniciar el OAuth de GitHub; `next` es la ruta a la que volver. */
+    githubUrl: (next?: string) =>
+      `${API_URL}/api/auth/github${next ? `?next=${encodeURIComponent(next)}` : ""}`,
     githubRepos: () => get<{ repos: GithubUserRepo[] }>("/api/auth/github/repos"),
   },
 

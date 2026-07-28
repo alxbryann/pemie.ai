@@ -4,7 +4,7 @@
 // exige el scope de cada tool, delega en las operaciones `opXxx` (ya acotadas
 // al proyecto de la key) y registra cada llamada en el AuditLog.
 
-import type { Hono } from "hono";
+import { Hono } from "hono";
 import type { ApiKey } from "@prisma/client";
 import type { ApiScope } from "@pemie/shared";
 import type { AppEnv } from "../rest/http.js";
@@ -555,22 +555,33 @@ function auditToolCall(ctx: McpContext, name: string, args: Record<string, unkno
 }
 
 /**
- * Monta la interfaz MCP. `GET /mcp` es un descriptor público; `POST /mcp` es el
+ * Router de la interfaz MCP. `GET /` es un descriptor público; `POST /` es el
  * endpoint JSON-RPC autenticado por API key (`Authorization: Bearer <key>`).
+ * `app.ts` lo monta en `/mcp` (URL pública) y en `/api/mcp` (ruta interna en
+ * Vercel, donde las funciones viven bajo /api).
  */
-export function registerMcp(app: Hono<AppEnv>) {
-  app.get("/mcp", (c) =>
-    c.json({
+export function mcpRoutes(): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+
+  app.get("/", (c) => {
+    // Un cliente MCP de transporte "Streamable HTTP" abre este GET pidiendo SSE
+    // para recibir mensajes iniciados por el servidor. Este servidor es
+    // request/response puro: el 405 es la respuesta que la especificación indica
+    // para "no ofrezco stream", y así el cliente sigue con el POST sin colgarse.
+    if (c.req.header("accept")?.includes("text/event-stream")) {
+      return c.json({ error: "Este servidor MCP no ofrece SSE; usa POST" }, 405);
+    }
+    return c.json({
       name: SERVER_INFO.name,
       protocol: "mcp/json-rpc",
       protocolVersion: PROTOCOL_VERSION,
       transport: "POST /mcp (Authorization: Bearer <api-key>)",
       tools: TOOLS.map((t) => ({ name: t.name, scope: t.scope })),
       resources: RESOURCES.map((r) => ({ uri: r.uri, scope: r.scope })),
-    })
-  );
+    });
+  });
 
-  app.post("/mcp", async (c) => {
+  app.post("/", async (c) => {
     const bearer = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
     let key: ApiKey;
     try {
@@ -596,4 +607,6 @@ export function registerMcp(app: Hono<AppEnv>) {
     if (res === undefined) return c.body(null, 204); // notificación
     return c.json(res);
   });
+
+  return app;
 }

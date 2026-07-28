@@ -37,6 +37,17 @@ npm run dev:web             # frontend en http://localhost:5173
 - Health del backend: `GET http://localhost:4000/api/health`
 - Índice de API: `GET http://localhost:4000/api`
 
+En `apps/web/.env` solo hace falta `VITE_API_URL`; no copies `NODE_ENV=development`
+ahí, porque haría que `npm run build --workspace @pemie/web` genere un bundle de
+desarrollo.
+
+## Producción
+
+Un solo proyecto de Vercel sirve el front y el API (función serverless en
+`api/[[...path]].ts`, la misma app Hono que en local). Compartir dominio hace que
+la cookie de sesión sea first-party y que no haga falta configurar CORS ni
+`VITE_API_URL`. Pasos, variables y checklist: **[docs/deploy-vercel.md](docs/deploy-vercel.md)**.
+
 ## Roadmap (fases)
 
 - **F0** ✅ Scaffolding — monorepo, backend+frontend ejecutables, esquema Prisma completo.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../lib/auth.js";
+import { safeNextPath, useAuth } from "../lib/auth.js";
 import { api, ApiError } from "../lib/api.js";
 import { Button, Card, ErrorText, Eyebrow, Field, Input, LogoMark, Wordmark } from "../components/ui.js";
 
@@ -8,6 +8,9 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  // Destino tras autenticarse: lo fija quien nos mandó aquí (ruta protegida o
+  // pantalla de invitación). Se propaga al OAuth para volver al mismo sitio.
+  const next = safeNextPath(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(oauthError(params.get("error")));
@@ -19,7 +22,7 @@ export default function Login() {
     setBusy(true);
     try {
       await login(email, password);
-      navigate("/");
+      navigate(next, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo iniciar sesión");
     } finally {
@@ -50,7 +53,7 @@ export default function Login() {
       <div className="my-4 flex items-center gap-3 text-caption text-ink-400">
         <div className="h-px flex-1 bg-line-100" /> o <div className="h-px flex-1 bg-line-100" />
       </div>
-      <a href={api.auth.githubUrl()} className="block">
+      <a href={api.auth.githubUrl(next)} className="block">
         <Button variant="secondary" className="w-full">
           Continuar con GitHub
         </Button>
@@ -58,7 +61,10 @@ export default function Login() {
 
       <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿No tienes cuenta?{" "}
-        <Link to="/register" className="font-medium text-blue-600 hover:underline">
+        <Link
+          to={next === "/" ? "/register" : `/register?next=${encodeURIComponent(next)}`}
+          className="font-medium text-blue-600 hover:underline"
+        >
           Regístrate
         </Link>
       </p>

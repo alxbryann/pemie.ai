@@ -4,6 +4,9 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Las funciones de Vercel corren en Amazon Linux 2023 (OpenSSL 3): sin este
+  // target el motor de query no se incluye en el bundle y el API cae en prod.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

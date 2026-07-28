@@ -1,5 +1,16 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install && npm run db:generate --workspace @pemie/api",
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/dist",
-  "installCommand": "npm install"
+  "functions": {
+    "api/[[...path]].ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/webhooks/:path*", "destination": "/api/webhooks/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

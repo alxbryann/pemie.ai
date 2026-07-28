@@ -1,6 +1,6 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import type { ReactNode } from "react";
-import { useAuth } from "./lib/auth.js";
+import { safeNextPath, useAuth } from "./lib/auth.js";
 import { Layout } from "./components/Layout.js";
 import { Spinner } from "./components/ui.js";
 import Login from "./pages/Login.js";
@@ -29,17 +29,25 @@ export default function App() {
   );
 }
 
-/** Envuelve rutas que requieren sesión; redirige a /login si no hay usuario. */
+/**
+ * Envuelve rutas que requieren sesión; redirige a /login recordando el destino
+ * en `?next=` (no en el state del router: así sobrevive a un recargar de página
+ * y al viaje redondo del OAuth de GitHub).
+ */
 function Protected({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
-  if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  if (!user) {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
   return <Layout>{children}</Layout>;
 }
 
 /** Rutas solo para invitados (login/register); redirige a la app si ya hay sesión. */
 function GuestOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (user) return <Navigate to="/" replace />;
+  const [params] = useSearchParams();
+  if (user) return <Navigate to={safeNextPath(params.get("next"))} replace />;
   return <>{children}</>;
 }

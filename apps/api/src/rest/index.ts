@@ -42,7 +42,10 @@ export function registerRest(app: Hono<AppEnv>) {
   );
 
   // Webhooks de ingesta (F2): fuera de /api/*, autenticados por firma HMAC.
+  // El alias bajo /api existe porque en Vercel las funciones viven ahí y el
+  // rewrite de /webhooks/* reescribe la ruta antes de llegar a la app.
   app.route("/webhooks", webhookRoutes());
+  app.route("/api/webhooks", webhookRoutes());
 
   // Resuelve la sesión (cookie -> user) para todo /api/*.
   app.use("/api/*", sessionMiddleware);
