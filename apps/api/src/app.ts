@@ -1,7 +1,7 @@
 // Construcción de la app Hono: un solo núcleo de negocio (services/) expuesto
 // por REST y MCP. Este módulo NO escucha en un puerto — así el mismo grafo de
 // rutas se usa tanto por el servidor Node local (index.ts) como por la función
-// serverless de Vercel (api/[[...path]].ts).
+// serverless de Vercel (api/server.ts).
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";

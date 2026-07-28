@@ -1,5 +1,5 @@
 // Servidor Node local (npm run dev:api / npm start). En Vercel el punto de
-// entrada es la función serverless de `api/[[...path]].ts`, que reutiliza la
+// entrada es la función serverless de `api/server.ts`, que reutiliza la
 // misma app de `app.ts`.
 
 import "dotenv/config";

@@ -2,7 +2,7 @@
 
 pemie.ai se despliega como **un único proyecto de Vercel** (`pemie.ai` →
 `https://pemieai.vercel.app`): el front es el build estático de `apps/web`, y el
-API (Hono) corre como función serverless en `api/[[...path]].ts`, que reutiliza la
+API (Hono) corre como función serverless en `api/server.ts`, que reutiliza la
 misma app de `apps/api/src/app.ts` que levanta el servidor local.
 
 Que compartan dominio no es casual, resuelve tres cosas de golpe:
@@ -17,13 +17,23 @@ Que compartan dominio no es casual, resuelve tres cosas de golpe:
 
 | URL pública | Sirve |
 | --- | --- |
-| `/`, `/login`, `/w/:slug`, … | SPA (rewrite a `index.html`) |
 | `/api/**` | función serverless (REST) |
-| `/mcp` | interfaz MCP para agentes (rewrite → `/api/mcp`) |
-| `/webhooks/github` | ingesta de commits (rewrite → `/api/webhooks/github`) |
+| `/mcp` | interfaz MCP para agentes |
+| `/webhooks/github` | ingesta de commits |
+| assets (`/assets/**`, `/favicon.svg`) | estáticos del build |
+| todo lo demás (`/login`, `/w/:slug`, `/invite/:token`, …) | SPA (`index.html`) |
 
-El fallback SPA de `vercel.json` es lo que hace que refrescar en `/login` o abrir
-un link de invitación `/invite/:token` no dé 404.
+El orden importa y por eso `vercel.json` usa `routes` explícitas en vez de
+`rewrites`: los `rewrites` se evalúan **antes** de las rutas de las funciones, así
+que un catch-all a `index.html` se come toda la API (síntoma: `/api/health`
+devuelve el HTML del front). Con `routes`, las tres primeras reglas mandan a la
+función, luego `handle: filesystem` sirve los assets y solo al final cae el
+fallback del SPA — que es lo que hace que refrescar en `/login` o abrir un link de
+invitación no dé 404.
+
+En las reglas, `dest` solo **elige** la función: la ruta original llega intacta a
+la app, así que Hono enruta `/api/auth/login`, `/mcp` y `/webhooks/github` igual
+que en local.
 
 ## Base de datos (producción)
 

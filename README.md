@@ -44,7 +44,7 @@ desarrollo.
 ## Producción
 
 Un solo proyecto de Vercel sirve el front y el API (función serverless en
-`api/[[...path]].ts`, la misma app Hono que en local). Compartir dominio hace que
+`api/server.ts`, la misma app Hono que en local). Compartir dominio hace que
 la cookie de sesión sea first-party y que no haga falta configurar CORS ni
 `VITE_API_URL`. Pasos, variables y checklist: **[docs/deploy-vercel.md](docs/deploy-vercel.md)**.
 

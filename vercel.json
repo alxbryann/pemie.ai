@@ -4,13 +4,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/dist",
   "functions": {
-    "api/[[...path]].ts": {
+    "api/server.ts": {
       "maxDuration": 30
     }
   },
-  "rewrites": [
-    { "source": "/mcp", "destination": "/api/mcp" },
-    { "source": "/webhooks/:path*", "destination": "/api/webhooks/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "routes": [
+    { "src": "/api(/.*)?", "dest": "/api/server" },
+    { "src": "/mcp", "dest": "/api/server" },
+    { "src": "/webhooks(/.*)?", "dest": "/api/server" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
