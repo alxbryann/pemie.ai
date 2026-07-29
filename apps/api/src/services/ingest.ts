@@ -1,19 +1,20 @@
 // Servicio de ingesta (F2): vincula repos de GitHub a proyectos y registra sus
 // commits, clasificándolos por dominio. Alimentado por dos vías:
 //   - webhooks push (tiempo real)      -> ingestPushEvent
-//   - backfill vía API (histórico)     -> backfillRepo
+//   - sincronización vía API (histórico) -> backfillRepo / backfillProject
 // Toda operación se scopea por proyecto y verifica el rol del usuario.
 
 import { classifyCommit, DEFAULT_DOMAIN_CONFIG, type DomainConfig, type Role } from "@pemie/shared";
 import { prisma } from "../db.js";
-import { badRequest, conflict, notFound } from "./errors.js";
+import { badRequest, conflict, forbidden, notFound } from "./errors.js";
 import { requireMembership } from "./tenancy.js";
 import * as board from "./board.js";
+import { fetchRecentCommits, githubAppConfigured } from "../lib/github-app.js";
 import {
-  fetchRecentCommits,
-  githubAppConfigured,
+  fetchCommitsWithToken,
+  GithubApiError,
   type NormalizedCommit,
-} from "../lib/github-app.js";
+} from "../lib/github-commits.js";
 import { fetchUserRepos } from "../lib/github-oauth.js";
 
 /** Carga un proyecto verificando que el usuario tenga `minRole` en su workspace. */
@@ -35,17 +36,23 @@ async function repoWithAccess(userId: string, repoId: string, minRole: Role = "v
 // ─── Repos ───────────────────────────────────────────────────────────────
 
 /**
- * Lista los repos de GitHub del usuario (para el selector de vinculación),
- * usando el access token OAuth guardado al hacer login con GitHub.
+ * Access token OAuth que el usuario concedió al iniciar sesión con GitHub. Es
+ * la credencial con la que leemos sus repos y sus commits: hereda exactamente
+ * los permisos que él autorizó, sin instalar nada en sus organizaciones.
  */
-export async function listUserGithubRepos(userId: string) {
+async function userGithubToken(userId: string): Promise<string> {
   const account = await prisma.account.findFirst({
     where: { userId, provider: "github" },
     select: { accessToken: true },
   });
   if (!account?.accessToken)
-    throw badRequest("Conecta tu cuenta de GitHub para ver tus repos", "github_not_connected");
-  return fetchUserRepos(account.accessToken);
+    throw badRequest("Conecta tu cuenta de GitHub", "github_not_connected");
+  return account.accessToken;
+}
+
+/** Lista los repos de GitHub del usuario (para el selector de vinculación). */
+export async function listUserGithubRepos(userId: string) {
+  return fetchUserRepos(await userGithubToken(userId));
 }
 
 export interface LinkRepoInput {
@@ -68,7 +75,7 @@ export async function linkRepo(userId: string, projectId: string, input: LinkRep
   });
   if (existing) throw conflict("Ese repo ya está vinculado al proyecto", "repo_exists");
 
-  return prisma.repo.create({
+  const repo = await prisma.repo.create({
     data: {
       projectId,
       provider: "github",
@@ -79,6 +86,24 @@ export async function linkRepo(userId: string, projectId: string, input: LinkRep
       installationId: input.installationId ?? null,
     },
   });
+
+  // Primera sincronización inmediata: vincular un repo y quedarse en cero
+  // commits no comunica nada. Best effort — si GitHub falla, el repo queda
+  // vinculado igual, pero el motivo viaja de vuelta para que la UI lo muestre
+  // en vez de dejar un repo mudo en la lista.
+  let ingested = 0;
+  let syncError: string | null = null;
+  try {
+    ingested = (await syncRepoCommits(userId, repo)).ingested;
+  } catch (err) {
+    try {
+      describeGithubFailure(err, `${owner}/${name}`);
+    } catch (domainErr) {
+      syncError = (domainErr as Error).message;
+    }
+  }
+
+  return { repo, ingested, syncError };
 }
 
 /** Lista los repos vinculados a un proyecto, con conteo de commits (viewer+). */
@@ -273,19 +298,88 @@ export async function ingestPushEvent(payload: PushEvent) {
   return { ingested, repos: targets.length };
 }
 
+/** Repo tal como lo necesita la sincronización. */
+type SyncableRepo = { id: string; projectId: string; owner: string; name: string; installationId: string | null };
+
 /**
- * Backfill histórico de un repo vía la API de GitHub (member+). Requiere que el
- * repo tenga installationId y la GitHub App configurada.
+ * Trae los commits de un repo y los registra. La credencial por defecto es el
+ * access token OAuth del usuario —el permiso que él mismo concedió al entrar—
+ * y solo se recurre a la GitHub App si el repo llegó por una instalación.
+ * Asume acceso ya verificado por quien llama.
+ */
+async function syncRepoCommits(userId: string, repo: SyncableRepo, since?: Date) {
+  const viaApp = Boolean(repo.installationId && githubAppConfigured());
+  const commits = viaApp
+    ? await fetchRecentCommits(repo.installationId!, repo.owner, repo.name, since)
+    : await fetchCommitsWithToken(await userGithubToken(userId), repo.owner, repo.name, since);
+  const ingested = await recordCommits(repo, commits);
+  return { fetched: commits.length, ingested };
+}
+
+/**
+ * Traduce un fallo de la API de GitHub al error de dominio que le sirve al
+ * usuario: qué pasó y qué puede hacer. Sin esto, un token vencido o un repo sin
+ * permisos llegaba al front como un 500 sin explicación.
+ */
+function describeGithubFailure(err: unknown, repoLabel: string): never {
+  if (err instanceof GithubApiError) {
+    if (err.status === 401)
+      throw badRequest(
+        "Tu autorización de GitHub venció. Vuelve a conectar tu cuenta.",
+        "github_token_expired"
+      );
+    if (err.status === 403)
+      throw forbidden(
+        `Tu cuenta de GitHub no tiene permiso para leer ${repoLabel}. Si es de una organización, revisa que la autorización de pemie.ai esté aprobada allí.`
+      );
+    if (err.status === 404)
+      throw notFound(`No encontramos ${repoLabel}, o tu cuenta de GitHub no tiene acceso.`);
+  }
+  throw err;
+}
+
+/**
+ * Sincroniza el histórico de un repo con la autorización de GitHub del usuario
+ * (member+). Idempotente: los commits ya registrados se ignoran.
  */
 export async function backfillRepo(userId: string, repoId: string, since?: Date) {
   const repo = await repoWithAccess(userId, repoId, "member");
-  if (!githubAppConfigured()) throw badRequest("GitHub App no configurada en el servidor", "github_app_unconfigured");
-  if (!repo.installationId)
-    throw badRequest("El repo no tiene installationId; vincúlalo vía la GitHub App", "missing_installation");
+  try {
+    return await syncRepoCommits(userId, repo, since);
+  } catch (err) {
+    describeGithubFailure(err, `${repo.owner}/${repo.name}`);
+  }
+}
 
-  const commits = await fetchRecentCommits(repo.installationId, repo.owner, repo.name, since);
-  const ingested = await recordCommits(repo, commits);
-  return { fetched: commits.length, ingested };
+/**
+ * Sincroniza todos los repos vinculados de un proyecto (member+). Un repo que
+ * falle no cancela los demás: se reporta por separado para que la UI pueda
+ * mostrar qué entró y qué no.
+ */
+export async function backfillProject(userId: string, projectId: string) {
+  await projectWithAccess(userId, projectId, "member");
+  const repos = await prisma.repo.findMany({ where: { projectId } });
+
+  let fetched = 0;
+  let ingested = 0;
+  const failed: { repo: string; error: string }[] = [];
+
+  for (const repo of repos) {
+    const label = `${repo.owner}/${repo.name}`;
+    try {
+      const result = await syncRepoCommits(userId, repo);
+      fetched += result.fetched;
+      ingested += result.ingested;
+    } catch (err) {
+      try {
+        describeGithubFailure(err, label);
+      } catch (domainErr) {
+        failed.push({ repo: label, error: (domainErr as Error).message });
+      }
+    }
+  }
+
+  return { repos: repos.length, fetched, ingested, failed };
 }
 
 // ─── Lectura ───────────────────────────────────────────────────────────────

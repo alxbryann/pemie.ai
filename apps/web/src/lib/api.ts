@@ -175,6 +175,13 @@ export interface Repo {
   createdAt: string;
   _count: { commits: number };
 }
+/** Resultado de sincronizar todos los repos de un proyecto. */
+export interface SyncResult {
+  repos: number;
+  fetched: number;
+  ingested: number;
+  failed: { repo: string; error: string }[];
+}
 export interface Contributor {
   id: string;
   githubLogin: string;
@@ -353,11 +360,13 @@ export const api = {
   repos: {
     list: (w: string, p: string) => get<{ repos: Repo[] }>(`${pp(w, p)}/repos`),
     link: (w: string, p: string, input: { owner: string; name: string; url?: string }) =>
-      post<{ repo: Repo }>(`${pp(w, p)}/repos`, input),
+      post<{ repo: Repo; ingested: number; syncError: string | null }>(`${pp(w, p)}/repos`, input),
     unlink: (w: string, p: string, repoId: string) =>
       del<{ ok: true }>(`${pp(w, p)}/repos/${repoId}`),
     backfill: (w: string, p: string, repoId: string) =>
       post<{ fetched: number; ingested: number }>(`${pp(w, p)}/repos/${repoId}/backfill`),
+    syncAll: (w: string, p: string) =>
+      post<SyncResult>(`${pp(w, p)}/repos/sync`),
   },
   commits: {
     list: (w: string, p: string, q?: { domain?: string; limit?: number }) =>
