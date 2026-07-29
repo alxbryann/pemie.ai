@@ -4,6 +4,9 @@
 
 import { createSign, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../env.js";
+import { fetchCommitsWithToken, type NormalizedCommit } from "./github-commits.js";
+
+export type { NormalizedCommit };
 
 export function githubAppConfigured(): boolean {
   return Boolean(env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY);
@@ -106,18 +109,10 @@ export async function listInstallationRepos(installationId: string): Promise<Git
   }));
 }
 
-export interface NormalizedCommit {
-  sha: string;
-  message: string;
-  committedAt: Date;
-  login: string | null;
-  authorName: string | null;
-  avatarUrl: string | null;
-}
-
 /**
- * Trae commits recientes de un repo vía la API (backfill inicial). `since`
- * limita a commits posteriores a esa fecha; sin él trae la última página.
+ * Trae commits recientes de un repo con las credenciales de la instalación.
+ * La lectura en sí es la compartida (`github-commits`): aquí solo se resuelve
+ * el installation token.
  */
 export async function fetchRecentCommits(
   installationId: string,
@@ -126,26 +121,7 @@ export async function fetchRecentCommits(
   since?: Date
 ): Promise<NormalizedCommit[]> {
   const token = await installationToken(installationId);
-  const url = new URL(`${API}/repos/${owner}/${name}/commits`);
-  url.searchParams.set("per_page", "100");
-  if (since) url.searchParams.set("since", since.toISOString());
-
-  const res = await fetch(url, { headers: tokenHeaders(token) });
-  if (!res.ok) throw new Error(`GitHub commits ${owner}/${name}: ${res.status}`);
-  const data = (await res.json()) as {
-    sha: string;
-    commit: { message: string; author: { name: string | null; date: string } | null };
-    author: { login: string; avatar_url: string } | null;
-  }[];
-
-  return data.map((c) => ({
-    sha: c.sha,
-    message: c.commit?.message ?? "",
-    committedAt: c.commit?.author?.date ? new Date(c.commit.author.date) : new Date(),
-    login: c.author?.login ?? null,
-    authorName: c.commit?.author?.name ?? null,
-    avatarUrl: c.author?.avatar_url ?? null,
-  }));
+  return fetchCommitsWithToken(token, owner, name, since);
 }
 
 /**

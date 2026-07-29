@@ -149,6 +149,48 @@ export function ErrorText({ children }: { children: ReactNode }) {
   return <p className="text-body-sm text-[#b8353a]">{children}</p>;
 }
 
+export type NoticeTone = "success" | "warning" | "danger" | "info";
+
+const NOTICE_TONES: Record<NoticeTone, string> = {
+  success: "border-green-200 bg-green-50 text-[#0d7a51]",
+  warning: "border-amber-200 bg-amber-50 text-[#8a5e0a]",
+  danger: "border-red-200 bg-red-50 text-[#b8353a]",
+  info: "border-blue-200 bg-blue-50 text-blue-700",
+};
+
+/**
+ * Aviso en bloque para el resultado de una acción (a diferencia de `ErrorText`,
+ * que es una línea suelta bajo un campo). `onDismiss` lo hace descartable.
+ */
+export function Notice({
+  children,
+  tone = "info",
+  onDismiss,
+}: {
+  children: ReactNode;
+  tone?: NoticeTone;
+  onDismiss?: () => void;
+}) {
+  if (!children) return null;
+  return (
+    <div
+      role="status"
+      className={`flex items-start justify-between gap-3 rounded-md border px-4 py-3 text-body-sm ${NOTICE_TONES[tone]}`}
+    >
+      <div className="min-w-0">{children}</div>
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          aria-label="Descartar aviso"
+          className="shrink-0 rounded-sm px-1 leading-none opacity-60 transition-opacity hover:opacity-100 focus:shadow-focus focus:outline-none"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 export type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger";
 
 const BADGE_TONES: Record<BadgeTone, { chip: string; dot: string }> = {

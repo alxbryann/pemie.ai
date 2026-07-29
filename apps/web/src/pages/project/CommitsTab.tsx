@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -6,6 +6,7 @@ import {
   type GithubUserRepo,
   type Repo,
   type Stats,
+  type SyncResult,
 } from "../../lib/api.js";
 import {
   Badge,
@@ -14,6 +15,7 @@ import {
   EmptyState,
   ErrorText,
   Input,
+  Notice,
   Skeleton,
   SkeletonStats,
   SkeletonList,
@@ -26,6 +28,10 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Sincronización manual con GitHub (usa el token OAuth de la sesión).
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   // Selector de repos de GitHub
   const [picker, setPicker] = useState(false);
@@ -52,10 +58,54 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       setLoading(false);
     }
   }
+  // Abrir la pestaña sincroniza sola: primero se pinta lo que ya hay (rápido) y
+  // en segundo plano se trae lo nuevo de GitHub. `autoSynced` evita repetirlo
+  // en el doble montaje de StrictMode y al volver de un re-render.
+  const autoSynced = useRef<string | null>(null);
   useEffect(() => {
-    load();
+    const key = `${ws}/${proj}`;
+    load().then(() => {
+      if (autoSynced.current === key) return;
+      autoSynced.current = key;
+      autoSync();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, proj]);
+
+  /**
+   * Sincronización silenciosa al entrar: solo molesta si trajo algo o si falló.
+   * Un "no había nada nuevo" en cada visita sería ruido.
+   */
+  async function autoSync() {
+    setSyncing(true);
+    try {
+      const result = await api.repos.syncAll(ws, proj, "auto");
+      if (result.ingested > 0 || result.failed.length > 0) {
+        setSyncResult(result);
+        await load();
+      }
+    } catch {
+      // Silencioso a propósito: la vista ya tiene datos y el usuario no pidió
+      // esto. El botón manual sí reporta el error.
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    setError(null);
+    setSyncResult(null);
+    try {
+      const result = await api.repos.syncAll(ws, proj);
+      setSyncResult(result);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo sincronizar con GitHub");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function openPicker() {
     setPicker(true);
@@ -76,8 +126,20 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   async function linkFromGithub(r: GithubUserRepo) {
     setLinking(r.fullName);
     setError(null);
+    setSyncResult(null);
     try {
-      await api.repos.link(ws, proj, { owner: r.owner, name: r.name, url: r.url });
+      // El backend hace una primera sincronización al vincular.
+      const { ingested, syncError } = await api.repos.link(ws, proj, {
+        owner: r.owner,
+        name: r.name,
+        url: r.url,
+      });
+      setSyncResult({
+        repos: 1,
+        fetched: ingested,
+        ingested,
+        failed: syncError ? [{ repo: r.fullName, error: syncError }] : [],
+      });
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo vincular el repo");
@@ -115,6 +177,28 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
     <div className="space-y-6">
       <ErrorText>{error}</ErrorText>
 
+      {syncResult && (
+        <Notice
+          tone={syncResult.failed.length > 0 ? "warning" : "success"}
+          onDismiss={() => setSyncResult(null)}
+        >
+          {syncResult.ingested > 0
+            ? `Se registraron ${syncResult.ingested} commits nuevos.`
+            : syncResult.failed.length === syncResult.repos
+              ? "No se pudo leer ningún repositorio."
+              : "Todo al día: no había commits nuevos."}
+          {syncResult.failed.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {syncResult.failed.map((f) => (
+                <li key={f.repo}>
+                  <span className="font-mono text-caption">{f.repo}</span>: {f.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Notice>
+      )}
+
       {/* Stats */}
       {stats && (
         <div className="grid gap-4 sm:grid-cols-3">
@@ -144,9 +228,16 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       <Card>
         <div className="flex items-center justify-between">
           <h3 className="text-h4 text-ink-900">Repositorios vinculados</h3>
-          <Button variant="secondary" size="sm" onClick={openPicker}>
-            + Vincular repo de GitHub
-          </Button>
+          <div className="flex items-center gap-2">
+            {repos.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={sync} disabled={syncing}>
+                {syncing ? "Sincronizando…" : "Sincronizar commits"}
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={openPicker}>
+              + Vincular repo de GitHub
+            </Button>
+          </div>
         </div>
         <div className="mt-4">
           {repos.length === 0 ? (
@@ -275,10 +366,16 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       <Card>
         <h3 className="text-h4 text-ink-900">Commits recientes</h3>
         <div className="mt-4">
-          {commits.length === 0 ? (
+          {commits.length === 0 && syncing ? (
+            <SkeletonList rows={5} />
+          ) : commits.length === 0 ? (
             <EmptyState
               title="Sin commits todavía"
-              description="Vincula un repo; los commits llegan por webhook de la GitHub App (o con backfill)."
+              description={
+                repos.length === 0
+                  ? "Vincula un repositorio de GitHub para empezar a ver la actividad del equipo."
+                  : 'Pulsa "Sincronizar commits" para traer el historial con tu cuenta de GitHub.'
+              }
             />
           ) : (
             <div className="divide-y divide-line-100">

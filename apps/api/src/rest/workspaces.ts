@@ -224,8 +224,8 @@ export function workspaceRoutes() {
     const project = await resolveProject(c);
     const body = linkRepoSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos del repo inválidos", "invalid_body");
-    const repo = await ingest.linkRepo(user.id, project.id, body.data);
-    return c.json({ repo }, 201);
+    const { repo, ingested, syncError } = await ingest.linkRepo(user.id, project.id, body.data);
+    return c.json({ repo, ingested, syncError }, 201);
   });
 
   // Repos disponibles vía una instalación de la GitHub App (para elegir cuál vincular).
@@ -240,6 +240,17 @@ export function workspaceRoutes() {
     const user = requireUser(c);
     await resolveProject(c);
     return c.json(await ingest.unlinkRepo(user.id, c.req.param("repoId")));
+  });
+
+  // Sincroniza todos los repos del proyecto. Antes de :repoId para que "sync"
+  // no se interprete como un id de repo.
+  // `?mode=auto` sincroniza solo lo vencido y solo lo nuevo (lo que dispara la
+  // pestaña al abrirse); por defecto trae el histórico completo.
+  app.post("/:slug/projects/:projectSlug/repos/sync", async (c) => {
+    const user = requireUser(c);
+    const project = await resolveProject(c);
+    const mode = c.req.query("mode") === "auto" ? "auto" : "full";
+    return c.json(await ingest.backfillProject(user.id, project.id, mode));
   });
 
   app.post("/:slug/projects/:projectSlug/repos/:repoId/backfill", async (c) => {
