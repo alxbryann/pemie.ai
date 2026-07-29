@@ -80,8 +80,11 @@ export function authRoutes() {
   const callbackUri = (c: AppContext) => `${apiOrigin(c)}/api/auth/github/callback`;
 
   app.get("/github", (c) => {
+    // Esta ruta se abre navegando (es un enlace, no un fetch): devolver JSON
+    // dejaría al usuario mirando un error crudo del backend en una pestaña en
+    // blanco. Se vuelve al login, que sabe explicarlo.
     if (!githubOAuthConfigured())
-      return c.json({ error: "GitHub OAuth no está configurado" }, 501);
+      return c.redirect(`${webOrigin(c)}/login?error=oauth_unconfigured`);
     const state = randomBytes(16).toString("hex");
     const cookieOpts = {
       httpOnly: true,

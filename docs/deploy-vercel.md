@@ -92,8 +92,10 @@ entra en el bundle.
 y el API deriva los redirects del host real de la petición (por `x-forwarded-*`),
 que es justo lo que hace funcionar los previews. Setéalas solo si algún día el API
 se separa a otro dominio. Tampoco hace falta `NODE_ENV` (Vercel ya la pone) ni
-`SESSION_SECRET` (está declarada en `env.ts` pero no se usa: las sesiones son
-tokens aleatorios guardados en la tabla `sessions`).
+`SESSION_SECRET`: sigue declarada en `env.ts` pero **no la lee nadie** — las
+sesiones son tokens aleatorios guardados en la tabla `sessions`, así que su
+default hardcodeado no es un agujero de seguridad. Está puesta en Production de
+todos modos, por si algún día se empieza a usar.
 
 ## GitHub OAuth
 
@@ -116,7 +118,40 @@ OAuth App por dominio de preview (o usar login por email+password ahí).
 
 En la GitHub App, *Webhook URL*: `https://<tu-dominio>/webhooks/github`, con el
 mismo secreto que `GITHUB_APP_WEBHOOK_SECRET`. La firma HMAC se valida sobre el
-cuerpo crudo; por eso la función declara `config = { api: { bodyParser: false } }`.
+cuerpo crudo; por eso la función declara `config = { api: { bodyParser: false } }`
+y además lee el stream de `IncomingMessage` ella misma (ver más abajo).
+
+## Trampas del runtime serverless (todas costaron un deploy caído)
+
+Tres cosas rompen la función en producción sin dar la cara en local, porque en
+local nada de esto pasa por el runtime de Vercel:
+
+1. **`"type": "module"` en el `package.json` raíz es obligatorio.** Vercel emite
+   `api/server.js` conservando los `import` ESM, y Node decide el formato por el
+   `package.json` más cercano. `api/` no tiene uno, así que manda el de la raíz:
+   sin `type: module` la función muere con `SyntaxError: Cannot use import
+   statement outside a module` → `FUNCTION_INVOCATION_FAILED` en **todas** las
+   rutas.
+2. **Los paquetes de workspace tienen que emitir JS.** `@pemie/shared` exponía
+   `main: ./src/index.ts` y Node no puede cargar TypeScript: `ERR_MODULE_NOT_FOUND`.
+   Ahora compila a `dist/` y reparte por condición de `exports` (`development` →
+   `src` para Vite en dev, `default` → `dist` en runtime y build). Y `apps/api`
+   **debe declararlo en `dependencies`** o el tracer de Vercel no lo mete en el bundle.
+3. **El body hay que leerlo a mano.** Con `handle()` de `@hono/node-server/vercel`
+   todo POST se colgaba hasta el timeout de 30 s: `await c.req.json()` nunca
+   resolvía. `api/server.ts` traduce `IncomingMessage → Request` explícitamente,
+   lo que de paso conserva el cuerpo crudo para el HMAC de los webhooks.
+
+Los `GET` sobreviven a la tercera, así que un `/api/health` en verde **no**
+prueba que el API funcione: hay que probar un POST.
+
+## Qué NO subir al deploy
+
+`.vercelignore` excluye los `.env*`. Al desplegar con el CLI (`vercel --prod`)
+esos archivos viajan aunque estén en `.gitignore`, y Vite hornea sus `VITE_*` en
+el bundle: así fue como el front publicado acabó mandando el login a
+`http://localhost:4000`. Como red de seguridad, `apps/web/src/lib/api.ts` ignora
+un `VITE_API_URL` que apunte a localhost en un build de producción.
 
 ## Conectar un agente por MCP
 

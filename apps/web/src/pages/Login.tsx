@@ -75,6 +75,8 @@ export default function Login() {
 function oauthError(code: string | null): string | null {
   if (!code) return null;
   if (code === "oauth_state") return "La sesión de GitHub expiró. Intenta de nuevo.";
+  if (code === "oauth_unconfigured")
+    return "El acceso con GitHub aún no está habilitado en este servidor. Entra con tu correo y contraseña.";
   return "No se pudo iniciar sesión con GitHub.";
 }
 

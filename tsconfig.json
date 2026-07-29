@@ -6,6 +6,10 @@
   // los campos opcionales y la compilación de la función falla — Vercel no la
   // genera y `/api/*` cae en el rewrite del SPA. Debe mantenerse alineado con
   // `apps/api/tsconfig.json`.
+  //
+  // Por lo mismo, el `package.json` de la raíz declara `"type": "module"`:
+  // `api/` no tiene package.json propio y sin eso Node carga la función
+  // compilada como CommonJS ("Cannot use import statement outside a module").
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

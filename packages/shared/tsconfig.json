@@ -1,0 +1,19 @@
+{
+  // Este paquete sí emite JS: lo consume el runtime de Node en la función
+  // serverless, que no puede cargar `.ts`. Ver el bloque `exports` del
+  // package.json para el reparto src (dev) / dist (runtime).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

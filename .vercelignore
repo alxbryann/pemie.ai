@@ -1,0 +1,18 @@
+# Qué NO se sube a Vercel al desplegar con el CLI (`vercel --prod`).
+#
+# Los `.env*` son locales y de desarrollo: subirlos filtra secretos al deploy y,
+# peor, Vite hornea sus `VITE_*` en el bundle de producción — así fue como el
+# front en prod acabó llamando a `http://localhost:4000`. La configuración de
+# producción vive en las Environment Variables del proyecto en Vercel.
+.env
+.env.*
+**/.env
+**/.env.*
+
+node_modules
+**/node_modules
+
+# Artefactos de build: Vercel los genera desde cero.
+apps/web/dist
+apps/api/dist
+packages/shared/dist

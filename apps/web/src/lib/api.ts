@@ -8,8 +8,17 @@ import type { Role } from "@pemie/shared";
 // first-party y no hay CORS. En dev el API vive en otro puerto. VITE_API_URL
 // manda si está seteada (útil si algún día el API se separa de dominio).
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
-const API_URL = configuredApiUrl
-  ? configuredApiUrl.replace(/\/+$/, "")
+
+// Un VITE_API_URL apuntando a localhost en un build de producción siempre es un
+// accidente (un `.env` de dev que se coló al deploy), y el síntoma es brutal: el
+// front publicado llama a la máquina del visitante. Se ignora en vez de obedecerlo.
+const usableApiUrl =
+  configuredApiUrl && (import.meta.env.DEV || !/^https?:\/\/(localhost|127\.0\.0\.1)\b/.test(configuredApiUrl))
+    ? configuredApiUrl
+    : undefined;
+
+const API_URL = usableApiUrl
+  ? usableApiUrl.replace(/\/+$/, "")
   : import.meta.env.DEV
     ? "http://localhost:4000"
     : "";
