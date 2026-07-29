@@ -73,6 +73,34 @@ export async function getWorkspace(userId: string, slug: string) {
   return { ...workspace, role: membership.role as Role };
 }
 
+/** Renombra un workspace (owner/admin). */
+export async function updateWorkspace(
+  userId: string,
+  workspaceId: string,
+  input: { name: string }
+) {
+  const membership = await requireMembership(userId, workspaceId, "admin");
+  const name = input.name.trim();
+  if (name.length < 2) throw badRequest("El nombre es muy corto", "invalid_name");
+  // El slug NO se regenera al renombrar: es la identidad del workspace en las URLs,
+  // en los enlaces ya compartidos y en las configuraciones de los agentes. Cambiarlo
+  // rompería todo eso, así que el nombre es solo la etiqueta visible.
+  const workspace = await prisma.workspace.update({ where: { id: workspaceId }, data: { name } });
+  // Misma forma que `getWorkspace` para que el cliente pueda reemplazar su estado.
+  return { ...workspace, role: membership.role as Role };
+}
+
+/** Elimina un workspace con todo su contenido (solo owner). */
+export async function deleteWorkspace(userId: string, workspaceId: string) {
+  await requireMembership(userId, workspaceId, "owner");
+  // Un borrado destructivo e irreversible solo lo puede hacer quien es dueño.
+  // La cascada del schema arrastra membresías, invitaciones, API keys, audit log y
+  // los proyectos con todo lo que cuelga de ellos (repos, commits, informes, notas,
+  // objetivos, épicas, historias y tableros): no hace falta borrar nada a mano.
+  await prisma.workspace.delete({ where: { id: workspaceId } });
+  return { ok: true };
+}
+
 /** Miembros de un workspace (requiere ser miembro). */
 export async function listMembers(userId: string, workspaceId: string) {
   await requireMembership(userId, workspaceId);

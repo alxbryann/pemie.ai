@@ -385,6 +385,30 @@ export function EmptyState({
   );
 }
 
+// Las acciones irreversibles se agrupan aparte y con el tono de peligro del sistema:
+// nadie debe poder destruir algo por inercia mientras completa un formulario normal.
+export function DangerZone({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-red-100 bg-surface-0 shadow-xs">
+      <h3 className="border-b border-red-100 bg-red-100 px-6 py-3.5 text-h4 text-red-700">
+        {title}
+      </h3>
+      <div className="p-6">
+        {description ? <div className="mb-5 text-body-sm text-ink-600">{description}</div> : null}
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export function Spinner() {
   return (
     <div className="grid min-h-[40vh] place-items-center">

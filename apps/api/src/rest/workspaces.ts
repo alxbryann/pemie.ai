@@ -15,6 +15,7 @@ import { listInstallationRepos } from "../lib/github-app.js";
 import { type AppContext, type AppEnv, requireUser } from "./http.js";
 
 const createWorkspaceSchema = z.object({ name: z.string().min(2) });
+const updateWorkspaceSchema = z.object({ name: z.string().min(2) });
 const createProjectSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
@@ -131,6 +132,20 @@ export function workspaceRoutes() {
   app.get("/:slug", async (c) => {
     const user = requireUser(c);
     return c.json({ workspace: await tenancy.getWorkspace(user.id, c.req.param("slug")) });
+  });
+
+  app.patch("/:slug", async (c) => {
+    const user = requireUser(c);
+    const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    const body = updateWorkspaceSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) throw badRequest("Nombre inválido", "invalid_body");
+    return c.json({ workspace: await tenancy.updateWorkspace(user.id, ws.id, body.data) });
+  });
+
+  app.delete("/:slug", async (c) => {
+    const user = requireUser(c);
+    const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    return c.json(await tenancy.deleteWorkspace(user.id, ws.id));
   });
 
   app.get("/:slug/members", async (c) => {

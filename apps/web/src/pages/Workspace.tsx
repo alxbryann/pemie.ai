@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   api,
   ApiError,
@@ -12,12 +12,15 @@ import {
   Badge,
   Button,
   Card,
+  DangerZone,
   EmptyState,
   ErrorText,
   Field,
   Input,
   PageHeader,
-  Spinner,
+  Skeleton,
+  SkeletonCard,
+  SkeletonList,
   type BadgeTone,
 } from "../components/ui.js";
 
@@ -43,8 +46,13 @@ export default function Workspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  if (error) return <Card className="text-red-600">{error}</Card>;
-  if (!ws) return <Spinner />;
+  if (error)
+    return (
+      <Card>
+        <ErrorText>{error}</ErrorText>
+      </Card>
+    );
+  if (!ws) return <WorkspaceSkeleton />;
 
   const canManage = ws.role === "owner" || ws.role === "admin";
 
@@ -61,6 +69,40 @@ export default function Workspace() {
       <div className="space-y-8">
         <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
         <TeamSection slug={slug} canManage={canManage} />
+        {/* `key` por workspace: al cambiar de workspace se descarta el borrador de
+            nombre y el texto de confirmación del anterior. */}
+        {canManage && <SettingsSection key={ws.id} ws={ws} onRenamed={setWs} />}
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton con la forma final de la página: cabecera, proyectos y equipo. */
+function WorkspaceSkeleton() {
+  return (
+    <div>
+      <Skeleton className="mb-3 h-3 w-24" />
+      <div className="mb-8 flex items-end justify-between gap-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-6 w-16 rounded-pill" />
+      </div>
+      <div className="space-y-8">
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-9 w-36 rounded-sm" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SkeletonCard lines={2} />
+            <SkeletonCard lines={2} />
+          </div>
+        </section>
+        <section>
+          <Skeleton className="mb-4 h-6 w-24" />
+          <Card>
+            <SkeletonList rows={3} />
+          </Card>
+        </section>
       </div>
     </div>
   );
@@ -165,6 +207,132 @@ function ProjectsSection({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * Gestión del propio workspace: renombrar (admin/owner) y eliminar (solo owner).
+ * Vive en el detalle y no en la lista porque son acciones sobre *este* workspace
+ * y el borrado necesita espacio para una confirmación seria.
+ */
+function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws) => void }) {
+  const navigate = useNavigate();
+  const [name, setName] = useState(ws.name);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const trimmed = name.trim();
+  const canRename = trimmed.length >= 2 && trimmed !== ws.name && !saving;
+  // Escribir el nombre exacto es la barrera contra el borrado por inercia.
+  const canDelete = confirmation.trim() === ws.name && !deleting;
+
+  async function onRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canRename) return;
+    setSaving(true);
+    setRenameError(null);
+    try {
+      const { workspace } = await api.workspaces.update(ws.slug, trimmed);
+      onRenamed(workspace); // el estado de la página se refresca sin recargar
+      setSaved(true);
+    } catch (err) {
+      setRenameError(err instanceof ApiError ? err.message : "No se pudo renombrar el workspace");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.workspaces.remove(ws.slug);
+      // La ruta actual deja de existir: se vuelve a la lista sin dejarla en el historial.
+      navigate("/", { replace: true });
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "No se pudo eliminar el workspace");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-4 text-h3 text-ink-900">Ajustes</h2>
+      <div className="space-y-4">
+        <Card>
+          <form onSubmit={onRename} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[14rem] flex-1">
+              <Field
+                label="Nombre del workspace"
+                hint={`La dirección no cambia: /w/${ws.slug} sigue funcionando.`}
+              >
+                <Input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setSaved(false);
+                  }}
+                  minLength={2}
+                  required
+                />
+              </Field>
+            </div>
+            <Button type="submit" disabled={!canRename}>
+              {saving ? "Guardando…" : "Guardar"}
+            </Button>
+          </form>
+          <div className="mt-2">
+            <ErrorText>{renameError}</ErrorText>
+            {saved && !renameError ? (
+              <p className="text-body-sm text-ink-500">Nombre actualizado.</p>
+            ) : null}
+          </div>
+        </Card>
+
+        {ws.role === "owner" && (
+          <DangerZone
+            title="Eliminar workspace"
+            description={
+              <>
+                <p>
+                  Se borrarán de forma permanente los proyectos de este workspace y todo su
+                  contenido: repositorios y commits, informes y notas, épicas e historias de
+                  usuario, tableros, las API keys y el registro de auditoría. El equipo perderá
+                  el acceso.
+                </p>
+                <p className="mt-2 font-semibold text-ink-800">Esta acción no se puede deshacer.</p>
+              </>
+            }
+          >
+            <form onSubmit={onDelete} className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[14rem] flex-1">
+                <Field label={`Escribe «${ws.name}» para confirmar`}>
+                  <Input
+                    value={confirmation}
+                    onChange={(e) => setConfirmation(e.target.value)}
+                    placeholder={ws.name}
+                    autoComplete="off"
+                    aria-label={`Escribe ${ws.name} para confirmar la eliminación`}
+                  />
+                </Field>
+              </div>
+              <Button type="submit" variant="danger" disabled={!canDelete}>
+                {deleting ? "Eliminando…" : "Eliminar workspace"}
+              </Button>
+            </form>
+            <div className="mt-2">
+              <ErrorText>{deleteError}</ErrorText>
+            </div>
+          </DangerZone>
+        )}
+      </div>
     </section>
   );
 }

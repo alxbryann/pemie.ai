@@ -328,6 +328,9 @@ export const api = {
     list: () => get<{ workspaces: WorkspaceSummary[] }>("/api/workspaces"),
     create: (name: string) => post<{ workspace: Workspace }>("/api/workspaces", { name }),
     get: (slug: string) => get<{ workspace: Workspace }>(`/api/workspaces/${slug}`),
+    update: (slug: string, name: string) =>
+      patch<{ workspace: Workspace }>(`/api/workspaces/${slug}`, { name }),
+    remove: (slug: string) => del<{ ok: true }>(`/api/workspaces/${slug}`),
     members: (slug: string) => get<{ members: Member[] }>(`/api/workspaces/${slug}/members`),
     invitations: (slug: string) =>
       get<{ invitations: Invitation[] }>(`/api/workspaces/${slug}/invitations`),
