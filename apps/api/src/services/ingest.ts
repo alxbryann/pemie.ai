@@ -299,7 +299,14 @@ export async function ingestPushEvent(payload: PushEvent) {
 }
 
 /** Repo tal como lo necesita la sincronización. */
-type SyncableRepo = { id: string; projectId: string; owner: string; name: string; installationId: string | null };
+type SyncableRepo = {
+  id: string;
+  projectId: string;
+  owner: string;
+  name: string;
+  installationId: string | null;
+  lastSyncedAt?: Date | null;
+};
 
 /**
  * Trae los commits de un repo y los registra. La credencial por defecto es el
@@ -313,8 +320,20 @@ async function syncRepoCommits(userId: string, repo: SyncableRepo, since?: Date)
     ? await fetchRecentCommits(repo.installationId!, repo.owner, repo.name, since)
     : await fetchCommitsWithToken(await userGithubToken(userId), repo.owner, repo.name, since);
   const ingested = await recordCommits(repo, commits);
+  await prisma.repo.update({ where: { id: repo.id }, data: { lastSyncedAt: new Date() } });
   return { fetched: commits.length, ingested };
 }
+
+/** Un repo sincronizado hace menos de esto se considera al día. */
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Solapamiento hacia atrás en la sync incremental. GitHub filtra por fecha del
+ * commit, no de llegada: un merge de una rama vieja o un rebase pueden traer
+ * commits *anteriores* al último sync. Pedir una hora de más los recupera sin
+ * repetir el histórico completo (el `skipDuplicates` absorbe el solape).
+ */
+const INCREMENTAL_OVERLAP_MS = 60 * 60 * 1000;
 
 /**
  * Traduce un fallo de la API de GitHub al error de dominio que le sirve al
@@ -352,13 +371,27 @@ export async function backfillRepo(userId: string, repoId: string, since?: Date)
 }
 
 /**
- * Sincroniza todos los repos vinculados de un proyecto (member+). Un repo que
- * falle no cancela los demás: se reporta por separado para que la UI pueda
- * mostrar qué entró y qué no.
+ * Sincroniza los repos vinculados de un proyecto (member+). Un repo que falle
+ * no cancela los demás: se reporta por separado para que la UI pueda mostrar
+ * qué entró y qué no.
+ *
+ * En modo `auto` (el que dispara la pestaña al abrirse) solo se tocan los repos
+ * sin sincronizar o vencidos, y de ellos únicamente lo nuevo desde su último
+ * sync. Así entrar a la vista cuesta ~1 request por repo en vez del histórico
+ * entero, y visitarla dos veces seguidas no cuesta nada.
  */
-export async function backfillProject(userId: string, projectId: string) {
+export async function backfillProject(
+  userId: string,
+  projectId: string,
+  mode: "full" | "auto" = "full"
+) {
   await projectWithAccess(userId, projectId, "member");
-  const repos = await prisma.repo.findMany({ where: { projectId } });
+  const all = await prisma.repo.findMany({ where: { projectId } });
+  const now = Date.now();
+  const repos =
+    mode === "auto"
+      ? all.filter((r) => !r.lastSyncedAt || now - r.lastSyncedAt.getTime() > STALE_AFTER_MS)
+      : all;
 
   let fetched = 0;
   let ingested = 0;
@@ -366,8 +399,14 @@ export async function backfillProject(userId: string, projectId: string) {
 
   for (const repo of repos) {
     const label = `${repo.owner}/${repo.name}`;
+    // Solo incremental cuando ya hubo un sync previo: si nunca se sincronizó,
+    // hay que traer el histórico aunque el modo sea automático.
+    const since =
+      mode === "auto" && repo.lastSyncedAt
+        ? new Date(repo.lastSyncedAt.getTime() - INCREMENTAL_OVERLAP_MS)
+        : undefined;
     try {
-      const result = await syncRepoCommits(userId, repo);
+      const result = await syncRepoCommits(userId, repo, since);
       fetched += result.fetched;
       ingested += result.ingested;
     } catch (err) {

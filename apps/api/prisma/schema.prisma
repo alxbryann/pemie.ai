@@ -149,8 +149,11 @@ model Repo {
   url            String?
   externalId     String?
   installationId String?
-  createdAt      DateTime @default(now())
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  // Última sincronización exitosa: permite la sync incremental al abrir la
+  // pestaña sin repetir el histórico completo en cada visita.
+  lastSyncedAt   DateTime?
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   commits        Commit[]
 
   @@unique([projectId, provider, owner, name])

@@ -365,8 +365,9 @@ export const api = {
       del<{ ok: true }>(`${pp(w, p)}/repos/${repoId}`),
     backfill: (w: string, p: string, repoId: string) =>
       post<{ fetched: number; ingested: number }>(`${pp(w, p)}/repos/${repoId}/backfill`),
-    syncAll: (w: string, p: string) =>
-      post<SyncResult>(`${pp(w, p)}/repos/sync`),
+    // `auto`: solo repos vencidos y solo sus commits nuevos (al abrir la vista).
+    syncAll: (w: string, p: string, mode: "full" | "auto" = "full") =>
+      post<SyncResult>(`${pp(w, p)}/repos/sync${mode === "auto" ? "?mode=auto" : ""}`),
   },
   commits: {
     list: (w: string, p: string, q?: { domain?: string; limit?: number }) =>

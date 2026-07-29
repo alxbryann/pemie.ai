@@ -229,10 +229,13 @@ export function workspaceRoutes() {
 
   // Sincroniza todos los repos del proyecto. Antes de :repoId para que "sync"
   // no se interprete como un id de repo.
+  // `?mode=auto` sincroniza solo lo vencido y solo lo nuevo (lo que dispara la
+  // pestaña al abrirse); por defecto trae el histórico completo.
   app.post("/:slug/projects/:projectSlug/repos/sync", async (c) => {
     const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json(await ingest.backfillProject(user.id, project.id));
+    const mode = c.req.query("mode") === "auto" ? "auto" : "full";
+    return c.json(await ingest.backfillProject(user.id, project.id, mode));
   });
 
   app.post("/:slug/projects/:projectSlug/repos/:repoId/backfill", async (c) => {

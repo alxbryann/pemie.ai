@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -58,10 +58,39 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       setLoading(false);
     }
   }
+  // Abrir la pestaña sincroniza sola: primero se pinta lo que ya hay (rápido) y
+  // en segundo plano se trae lo nuevo de GitHub. `autoSynced` evita repetirlo
+  // en el doble montaje de StrictMode y al volver de un re-render.
+  const autoSynced = useRef<string | null>(null);
   useEffect(() => {
-    load();
+    const key = `${ws}/${proj}`;
+    load().then(() => {
+      if (autoSynced.current === key) return;
+      autoSynced.current = key;
+      autoSync();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, proj]);
+
+  /**
+   * Sincronización silenciosa al entrar: solo molesta si trajo algo o si falló.
+   * Un "no había nada nuevo" en cada visita sería ruido.
+   */
+  async function autoSync() {
+    setSyncing(true);
+    try {
+      const result = await api.repos.syncAll(ws, proj, "auto");
+      if (result.ingested > 0 || result.failed.length > 0) {
+        setSyncResult(result);
+        await load();
+      }
+    } catch {
+      // Silencioso a propósito: la vista ya tiene datos y el usuario no pidió
+      // esto. El botón manual sí reporta el error.
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function sync() {
     setSyncing(true);
@@ -337,7 +366,9 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       <Card>
         <h3 className="text-h4 text-ink-900">Commits recientes</h3>
         <div className="mt-4">
-          {commits.length === 0 ? (
+          {commits.length === 0 && syncing ? (
+            <SkeletonList rows={5} />
+          ) : commits.length === 0 ? (
             <EmptyState
               title="Sin commits todavía"
               description={
