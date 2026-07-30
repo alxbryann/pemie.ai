@@ -128,28 +128,49 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
           ) : (
             <div className="divide-y divide-line-100">
               {reports.map((r) => (
-                <div
+                <article
                   key={r.id}
-                  className="flex items-start justify-between gap-4 -mx-6 px-6 py-3 hover:bg-surface-50"
+                  className="-mx-6 space-y-3 px-6 py-4 hover:bg-surface-50"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-body">
-                      <span className="font-mono text-ink-600">{r.date}</span>
-                      <Badge tone="neutral" mono>
-                        {r.scope}
-                      </Badge>
-                      {r.agent && (
-                        <span className="text-body-sm text-ink-400">· {r.agent.name}</span>
-                      )}
-                    </p>
-                    {r.verdict && (
-                      <p className="mt-1 text-body-sm text-ink-600">{r.verdict}</p>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-2 text-body">
+                        <span className="font-mono text-ink-600">{r.date}</span>
+                        {r.slot && (
+                          <Badge tone="neutral" mono>
+                            {r.slot}
+                          </Badge>
+                        )}
+                        <Badge tone="neutral" mono>
+                          {r.scope}
+                        </Badge>
+                        {r.verdict && (
+                          <Badge tone="brand" mono>
+                            {r.verdict}
+                          </Badge>
+                        )}
+                        {r.agent && (
+                          <span className="text-body-sm text-ink-400">· {r.agent.name}</span>
+                        )}
+                      </p>
+                      <p className="mt-1 font-mono text-caption text-ink-400">
+                        {new Date(r.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    {r.score != null && (
+                      <Stat value={Math.round(r.score)} label="score" />
                     )}
                   </div>
-                  {r.score != null && (
-                    <Stat value={Math.round(r.score)} label="score" />
+                  {r.comment ? (
+                    <div className="rounded-md border border-line-100 bg-surface-0 p-4">
+                      <p className="whitespace-pre-wrap text-body-sm leading-relaxed text-ink-800">
+                        {r.comment}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-body-sm text-ink-400">Sin comentario.</p>
                   )}
-                </div>
+                </article>
               ))}
             </div>
           )}
