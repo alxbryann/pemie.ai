@@ -32,6 +32,10 @@ model User {
   notes       Note[]
   objectives  ObjectiveHistory[]
   contributor Contributor[]
+  apiKeys     ApiKey[]            @relation("ApiKeyOwner")
+  channelLinks ChannelLink[]
+  channelConfig UserChannelConfig?
+  channelLinkTokens ChannelLinkToken[]
 
   @@map("users")
 }
@@ -132,8 +136,9 @@ model Project {
   epics        Epic[]
   userStories  UserStory[]
   boards       Board[]
-  agents       Agent[]
-  apiKeys      ApiKey[]
+  agents              Agent[]
+  apiKeys             ApiKey[]
+  channelDefaultsFor  UserChannelConfig[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -391,23 +396,30 @@ model Agent {
 }
 
 model ApiKey {
-  id          String    @id @default(cuid())
-  workspaceId String
-  projectId   String?
-  agentId     String?
-  name        String
-  hashedKey   String    @unique
-  prefix      String // primeros chars visibles para identificar la key
-  scopes      String[] // ApiScope[]
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  agent       Agent?    @relation(fields: [agentId], references: [id])
+  id           String    @id @default(cuid())
+  workspaceId  String
+  projectId    String?
+  agentId      String?
+  /// project | workspace | user — alcance MCP. Default project (compat).
+  scopeLevel   String    @default("project")
+  /// Dueño de una user key (obligatorio si scopeLevel = user).
+  ownerUserId  String?
+  name         String
+  hashedKey    String    @unique
+  prefix       String // primeros chars visibles para identificar la key
+  scopes       String[] // ApiScope[]
+  lastUsedAt   DateTime?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agent        Agent?    @relation(fields: [agentId], references: [id])
+  owner        User?     @relation("ApiKeyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  channelConfig UserChannelConfig?
 
   @@index([workspaceId])
   @@index([projectId])
+  @@index([ownerUserId])
   @@map("api_keys")
 }
 
@@ -425,4 +437,75 @@ model AuditLog {
 
   @@index([workspaceId, createdAt])
   @@map("audit_logs")
+}
+
+// ─── Canales (Telegram) ───────────────────────────────────────────────
+
+/// Vínculo permanente usuario Pemie ↔ cuenta Telegram.
+model ChannelLink {
+  id         String   @id @default(cuid())
+  userId     String
+  provider   String   @default("telegram") // telegram
+  externalId String // telegram user id
+  username   String?
+  linkedAt   DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("channel_links")
+}
+
+/// Config del canal del usuario: MCP user-key + Anthropic BYOK cifrada.
+model UserChannelConfig {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  apiKeyId         String   @unique
+  llmProvider      String   @default("anthropic")
+  llmKeyCiphertext String? // AES-GCM; null = falta configurar
+  llmKeyLast4      String?
+  model            String   @default("claude-sonnet-4-20250514")
+  defaultProjectId String?
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey           ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  defaultProject   Project? @relation(fields: [defaultProjectId], references: [id], onDelete: SetNull)
+
+  @@map("user_channel_configs")
+}
+
+/// Token one-shot para t.me/Bot?start=<token>.
+model ChannelLinkToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  projectId String? // proyecto desde el que se abrió el deep link (home opcional)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("channel_link_tokens")
+}
+
+/// Update entrante ya visto. La unique (provider, updateId) hace de candado de
+/// idempotencia frente a los reintentos del webhook, y las filas recientes por
+/// externalId son el rate limit (en serverless no sirve un contador en memoria).
+model ChannelUpdate {
+  id          String    @id @default(cuid())
+  provider    String    @default("telegram")
+  updateId    String // update_id de Telegram
+  externalId  String // telegram user id
+  processedAt DateTime? // null = reservado pero no terminado (turno caído)
+  createdAt   DateTime  @default(now())
+
+  @@unique([provider, updateId])
+  @@index([provider, externalId, createdAt])
+  @@index([createdAt])
+  @@map("channel_updates")
 }

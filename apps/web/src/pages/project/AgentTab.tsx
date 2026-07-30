@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_SCOPES } from "@pemie/shared";
+import {
+  API_SCOPES,
+  API_KEY_SCOPE_LEVELS,
+  CHANNEL_LLM_PROVIDERS,
+  CHANNEL_LLM_DEFAULT_MODELS,
+  type ApiKeyScopeLevel,
+  type ChannelLlmProvider,
+} from "@pemie/shared";
 import {
   api,
   ApiError,
@@ -7,6 +14,7 @@ import {
   type Agent,
   type ApiKeyPublic,
   type AuditLog,
+  type TelegramChannelStatus,
 } from "../../lib/api.js";
 import {
   Badge,
@@ -21,6 +29,231 @@ import {
 } from "../../components/ui.js";
 
 const MCP_URL = `${API_BASE}/mcp`;
+
+const SCOPE_LABELS: Record<ApiKeyScopeLevel, string> = {
+  project: "Proyecto",
+  workspace: "Workspace",
+  user: "Usuario",
+};
+
+const LLM_PROVIDER_LABELS: Record<ChannelLlmProvider, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  deepseek: "DeepSeek",
+};
+
+const LLM_KEY_PLACEHOLDER: Record<ChannelLlmProvider, string> = {
+  anthropic: "sk-ant-… (Anthropic)",
+  openai: "sk-… (OpenAI)",
+  deepseek: "sk-… (DeepSeek)",
+};
+
+function TelegramChannelCard({ projectId }: { projectId: string }) {
+  const [status, setStatus] = useState<TelegramChannelStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [startPayload, setStartPayload] = useState<string | null>(null);
+  const [llmKey, setLlmKey] = useState("");
+  const [llmProvider, setLlmProvider] = useState<ChannelLlmProvider>("anthropic");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setError(null);
+    try {
+      const r = await api.channels.telegramStatus();
+      setStatus(r.channel);
+      if (r.channel.llmProvider) setLlmProvider(r.channel.llmProvider);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Error cargando Telegram");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function createLink() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.channels.createLinkToken(projectId);
+      setDeepLink(r.deepLink);
+      setStartPayload(r.startPayload);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo crear el enlace");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveLlmKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (llmKey.trim().length < 20) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.channels.setLlmKey(llmKey.trim(), {
+        provider: llmProvider,
+        model: CHANNEL_LLM_DEFAULT_MODELS[llmProvider],
+      });
+      setStatus(r.channel);
+      setLlmKey("");
+      await api.channels.setDefaultProject(projectId);
+      const refreshed = await api.channels.telegramStatus();
+      setStatus(refreshed.channel);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar la key");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    try {
+      await api.channels.disconnect();
+      setDeepLink(null);
+      setStartPayload(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo desvincular");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <SkeletonCard lines={3} />;
+
+  const stateLabel = !status?.botConfigured
+    ? "Bot no configurado en el servidor"
+    : !status.linked
+      ? "No vinculado"
+      : !status.hasLlmKey
+        ? "Falta API key LLM"
+        : status.ready
+          ? "Listo"
+          : "Incompleto";
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-h4 text-ink-900">Canal Telegram</h3>
+          <p className="mt-2 text-body-sm text-ink-600">
+            Habla con Pemie desde Telegram (BYOK: Anthropic, OpenAI o DeepSeek). Al vincular se
+            crea una API key de usuario MCP para tus proyectos.
+          </p>
+        </div>
+        <Badge tone={status?.ready ? "brand" : "neutral"}>{stateLabel}</Badge>
+      </div>
+
+      <ErrorText>{error}</ErrorText>
+
+      {!status?.botConfigured ? (
+        <p className="mt-4 text-body-sm text-ink-500">
+          Configura <code className="font-mono text-caption">TELEGRAM_BOT_TOKEN</code>,{" "}
+          <code className="font-mono text-caption">TELEGRAM_BOT_USERNAME</code>,{" "}
+          <code className="font-mono text-caption">TELEGRAM_WEBHOOK_SECRET</code> y{" "}
+          <code className="font-mono text-caption">CHANNEL_SECRETS_KEY</code> en el servidor.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {status.linked && (
+            <p className="text-body-sm text-ink-600">
+              Vinculado como{" "}
+              <span className="font-medium">@{status.telegramUsername ?? "usuario"}</span>
+              {status.hasLlmKey && (
+                <>
+                  {" "}
+                  · {LLM_PROVIDER_LABELS[status.llmProvider]}{" "}
+                  <code className="font-mono text-caption">…{status.llmKeyLast4}</code>
+                </>
+              )}
+              {status.apiKeyPrefix && (
+                <>
+                  {" "}
+                  · MCP key <code className="font-mono text-caption">{status.apiKeyPrefix}…</code>
+                </>
+              )}
+              {status.defaultProject && (
+                <>
+                  {" "}
+                  · proyecto <code className="font-mono text-caption">{status.defaultProject.slug}</code>
+                </>
+              )}
+            </p>
+          )}
+
+          {!status.linked && (
+            <div className="space-y-2">
+              <Button type="button" onClick={createLink} disabled={busy}>
+                {busy ? "Generando…" : "Generar enlace de vínculo"}
+              </Button>
+              {deepLink && (
+                <p className="text-body-sm">
+                  <a
+                    href={deepLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-700 underline"
+                  >
+                    Abrir en Telegram
+                  </a>
+                </p>
+              )}
+              {!deepLink && startPayload && (
+                <CodeBlock title="En el bot, envía">{`/start ${startPayload}`}</CodeBlock>
+              )}
+              {deepLink && startPayload && (
+                <p className="font-mono text-caption text-ink-400">o /start {startPayload}</p>
+              )}
+            </div>
+          )}
+
+          {status.linked && (
+            <form onSubmit={saveLlmKey} className="flex flex-wrap gap-2">
+              <Select
+                value={llmProvider}
+                onChange={(e) => setLlmProvider(e.target.value as ChannelLlmProvider)}
+                aria-label="Proveedor LLM"
+              >
+                {CHANNEL_LLM_PROVIDERS.map((p) => (
+                  <option key={p} value={p}>
+                    {LLM_PROVIDER_LABELS[p]}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                type="password"
+                placeholder={
+                  status.hasLlmKey && status.llmProvider === llmProvider
+                    ? `Key actual …${status.llmKeyLast4}`
+                    : LLM_KEY_PLACEHOLDER[llmProvider]
+                }
+                value={llmKey}
+                onChange={(e) => setLlmKey(e.target.value)}
+                className="max-w-md min-w-0 flex-1"
+                aria-label="API key LLM"
+              />
+              <Button type="submit" disabled={busy || llmKey.trim().length < 20} variant="secondary">
+                Guardar key
+              </Button>
+            </form>
+          )}
+
+          {status.linked && (
+            <Button type="button" variant="danger" size="sm" onClick={disconnect} disabled={busy}>
+              Desvincular
+            </Button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function AgentTab({
   ws,
@@ -37,9 +270,9 @@ export default function AgentTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Formulario de nueva key
   const [keyName, setKeyName] = useState("");
   const [agentId, setAgentId] = useState("");
+  const [scopeLevel, setScopeLevel] = useState<ApiKeyScopeLevel>("project");
   const [scopes, setScopes] = useState<string[]>([...API_SCOPES]);
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -55,7 +288,14 @@ export default function AgentTab({
         api.audit.list(ws),
       ]);
       setAgents(a.agents);
-      setKeys(k.apiKeys.filter((key) => key.projectId === projectId));
+      // Mostrar keys de este proyecto + keys amplias del home workspace.
+      setKeys(
+        k.apiKeys.filter((key) => {
+          const level = key.scopeLevel ?? "project";
+          if (level === "project") return key.projectId === projectId;
+          return true;
+        })
+      );
       setLogs(au.auditLogs.filter((l) => l.entityId === projectId || l.actorType === "agent"));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Error cargando la sección de agente");
@@ -93,8 +333,9 @@ export default function AgentTab({
     try {
       const r = await api.apiKeys.create(ws, {
         name: keyName.trim(),
-        projectId,
-        agentId: agentId || undefined,
+        scopeLevel,
+        projectId: scopeLevel === "project" ? projectId : undefined,
+        agentId: scopeLevel === "project" && agentId ? agentId : undefined,
         scopes,
       });
       setNewKey(r.key);
@@ -121,11 +362,24 @@ export default function AgentTab({
 
   const systemPrompt = useMemo(() => {
     const key = newKey ?? "<TU_API_KEY>";
-    return `Eres un agente conectado al proyecto "${proj}" (workspace "${ws}") en pemie.ai.
+    const broadHint =
+      scopeLevel !== "project"
+        ? `
+## Alcance de tu API key (${scopeLevel})
+Tu key no está fijada a un solo proyecto. Antes de operar:
+1. Llama a list_workspaces y/o list_projects para descubrir IDs.
+2. Pasa projectId en CADA tool de proyecto (get_project_context, list_board, etc.).
+Proyecto de referencia al generar esta key: "${proj}" (id ${projectId}).
+`
+        : `
+## Alcance
+Tu key está fijada al proyecto "${proj}" (id ${projectId}). Puedes omitir projectId en las tools.
+`;
+    return `Eres un agente conectado a pemie.ai (workspace "${ws}").
 Tu trabajo es monitorear y documentar el avance del equipo: leer commits, mantener
 el objetivo, publicar informes, responder notas, y gestionar Historias de Usuario y el
 tablero Kanban.
-
+${broadHint}
 ## Conexión (MCP · JSON-RPC 2.0 sobre HTTP)
 - Endpoint: ${MCP_URL}
 - Autenticación: cabecera "Authorization: Bearer ${key}"
@@ -135,6 +389,10 @@ tablero Kanban.
 - Todo lo que haces queda auditado y está limitado por los scopes de tu API key.
 
 ## Herramientas disponibles
+Descubrimiento:
+- list_workspaces — workspaces accesibles con tu key.
+- list_projects — proyectos accesibles (opcional: filtrar por workspaceId).
+
 Contexto y commits:
 - get_project_context — objetivo, stats de commits y último informe.
 - list_commits — commits del proyecto (filtrable por dominio o contribuidor).
@@ -163,13 +421,12 @@ Kanban:
 - link_story_to_card — liga una tarjeta existente a una HU sin tarjeta.
 
 ## Cómo operar
-1. Antes de actuar, llama a get_project_context para orientarte.
+1. Si tu key es amplia, lista proyectos y pasa projectId. Si es de proyecto, llama a get_project_context.
 2. Usa list_* para leer el estado real antes de crear o modificar nada.
-3. Sé idempotente: publish_report ya lo es por fecha+slot; evita duplicar HUs o tarjetas
-   (consulta list_user_stories / list_board primero).
+3. Sé idempotente: publish_report ya lo es por fecha+slot; evita duplicar HUs o tarjetas.
 4. Al escribir informes, fundaméntalos en list_commits y get_story_commit_progress, no inventes.
-5. Si una acción falla por scope, informa qué scope te falta en vez de reintentar a ciegas.`;
-  }, [newKey, ws, proj]);
+5. Si una acción falla por scope o rol, informa qué falta en vez de reintentar a ciegas.`;
+  }, [newKey, ws, proj, projectId, scopeLevel]);
 
   if (loading)
     return (
@@ -184,12 +441,14 @@ Kanban:
     <div className="space-y-6">
       <ErrorText>{error}</ErrorText>
 
-      {/* Cómo conectar */}
+      <TelegramChannelCard projectId={projectId} />
+
       <Card>
         <h3 className="text-h4 text-ink-900">Conectar un agente por MCP</h3>
         <p className="mt-2 text-body-sm text-ink-600">
-          Tu agente (Hermes, u otro) se conecta a este endpoint con una API key. La key define qué
-          puede hacer (scopes) y está atada a este proyecto.
+          Tu agente se conecta a este endpoint con una API key. El alcance define si opera en
+          este proyecto, en todo el workspace o en todos tus workspaces (pasando{" "}
+          <code className="font-mono text-caption">projectId</code>).
         </p>
         <div className="mt-4 space-y-3">
           <CodeBlock title="MCP ENDPOINT">{MCP_URL}</CodeBlock>
@@ -197,20 +456,17 @@ Kanban:
         </div>
       </Card>
 
-      {/* Prompt de sistema para el agente */}
       <Card>
         <h3 className="text-h4 text-ink-900">Prompt para tu agente</h3>
         <p className="mt-2 text-body-sm text-ink-600">
           Pega esto como <span className="font-medium">system prompt</span> de tu agente. Genera
-          una API key abajo y reemplázala en el prompt (o genera una arriba para que aparezca ya
-          embebida). Explica el endpoint, cómo autenticar y todas las herramientas disponibles.
+          una API key abajo y reemplázala en el prompt.
         </p>
         <div className="mt-4">
           <CodeBlock command={systemPrompt} title="SYSTEM PROMPT" />
         </div>
       </Card>
 
-      {/* Nueva API key */}
       <Card>
         <h3 className="text-h4 text-ink-900">Generar API key</h3>
         <form onSubmit={createKey} className="mt-4 space-y-4">
@@ -223,18 +479,38 @@ Kanban:
               aria-label="Nombre de API key"
             />
             <Select
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-              aria-label="Agente asociado"
+              value={scopeLevel}
+              onChange={(e) => setScopeLevel(e.target.value as ApiKeyScopeLevel)}
+              aria-label="Alcance de la key"
             >
-              <option value="">— sin agente —</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
+              {API_KEY_SCOPE_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  Alcance: {SCOPE_LABELS[level]}
                 </option>
               ))}
             </Select>
+            {scopeLevel === "project" && (
+              <Select
+                value={agentId}
+                onChange={(e) => setAgentId(e.target.value)}
+                aria-label="Agente asociado"
+              >
+                <option value="">— sin agente —</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
+          {scopeLevel !== "project" && (
+            <p className="text-body-sm text-ink-500">
+              Las tools de proyecto exigirán{" "}
+              <code className="font-mono text-caption">projectId</code>. Usa{" "}
+              <code className="font-mono text-caption">list_projects</code> para descubrirlos.
+            </p>
+          )}
           <div>
             <p className="mb-2 text-caption font-mono uppercase text-ink-500">Scopes</p>
             <div className="flex flex-wrap gap-2">
@@ -276,7 +552,6 @@ Kanban:
         )}
       </Card>
 
-      {/* Keys existentes */}
       <Card>
         <h3 className="text-h4 text-ink-900">API keys ({keys.length})</h3>
         <div className="mt-4">
@@ -298,6 +573,9 @@ Kanban:
                       <code className="font-mono text-caption text-ink-400">{k.prefix}…</code>
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <Badge tone="brand" mono>
+                        {SCOPE_LABELS[(k.scopeLevel ?? "project") as ApiKeyScopeLevel]}
+                      </Badge>
                       {k.scopes.map((s) => (
                         <Badge key={s} tone="neutral" mono>
                           {s}
@@ -320,7 +598,6 @@ Kanban:
         </div>
       </Card>
 
-      {/* Agentes */}
       <Card>
         <h3 className="text-h4 text-ink-900">Agentes</h3>
         <form onSubmit={createAgent} className="mt-4 flex gap-2">
@@ -347,7 +624,6 @@ Kanban:
         </div>
       </Card>
 
-      {/* Actividad del agente */}
       <Card>
         <h3 className="text-h4 text-ink-900">Actividad reciente</h3>
         <div className="mt-4">

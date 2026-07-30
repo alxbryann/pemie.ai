@@ -20,6 +20,7 @@ Que compartan dominio no es casual, resuelve tres cosas de golpe:
 | `/api/**` | función serverless (REST) |
 | `/mcp` | interfaz MCP para agentes |
 | `/webhooks/github` | ingesta de commits |
+| `/webhooks/telegram` | bot Telegram (canal on-demand) |
 | assets (`/assets/**`, `/favicon.svg`) | estáticos del build |
 | todo lo demás (`/login`, `/w/:slug`, `/invite/:token`, …) | SPA (`index.html`) |
 
@@ -87,6 +88,8 @@ entra en el bundle.
 | `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` / `GITHUB_APP_WEBHOOK_SECRET` | de la GitHub App | ⬜ falta (ingesta de repos) |
 | `RESEND_API_KEY` / `MAIL_FROM` | envío real de invitaciones | ⬜ falta (si no, se comparte el link) |
 | `ANTHROPIC_API_KEY` | generación server-side | opcional |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` / `TELEGRAM_WEBHOOK_SECRET` | bot Telegram | ⬜ si usas el canal |
+| `CHANNEL_SECRETS_KEY` | AES-256 (base64, 32 bytes) para BYOK Anthropic | ⬜ si usas Telegram |
 
 **No setees `VITE_API_URL` ni `WEB_ORIGIN`.** Vacías, el front usa su mismo origen
 y el API deriva los redirects del host real de la petición (por `x-forwarded-*`),
@@ -120,6 +123,28 @@ En la GitHub App, *Webhook URL*: `https://<tu-dominio>/webhooks/github`, con el
 mismo secreto que `GITHUB_APP_WEBHOOK_SECRET`. La firma HMAC se valida sobre el
 cuerpo crudo; por eso la función declara `config = { api: { bodyParser: false } }`
 y además lee el stream de `IncomingMessage` ella misma (ver más abajo).
+
+## Canal Telegram
+
+1. Crea un bot en [@BotFather](https://t.me/BotFather) y copia el token.
+2. Genera secretos: `openssl rand -hex 32` (webhook) y `openssl rand -base64 32` (CHANNEL_SECRETS_KEY).
+3. Variables en Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (sin `@`),
+   `TELEGRAM_WEBHOOK_SECRET`, `CHANNEL_SECRETS_KEY`.
+4. Registra el webhook (una vez desplegado):
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -d "url=https://<tu-dominio>/webhooks/telegram" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
+```
+
+### Smoke test
+
+1. En Pemie → proyecto → Agente → **Canal Telegram**: generar enlace y abrir en Telegram (`/start`).
+2. Elegir proveedor (Anthropic / OpenAI / DeepSeek), pegar API key (BYOK) y guardar.
+3. En el bot: `/estado` (debe decir listo) → pregunta p. ej. “lista mis proyectos” o “muéstrame el tablero”.
+4. Comprobar AuditLog en el workspace (`mcp.list_projects`, `mcp.list_board`, …).
+5. `/desvincular` invalida el uso del bot hasta volver a vincular.
 
 ## Trampas del runtime serverless (todas costaron un deploy caído)
 
@@ -174,8 +199,9 @@ Notas de compatibilidad:
   clientes que permiten cabeceras propias (p. ej. `claude mcp add --transport
   http pemie https://<dominio>/mcp --header "Authorization: Bearer <key>"`); un
   conector que exija OAuth no encaja todavía.
-- Cada key está atada a un proyecto y a sus scopes, y toda llamada queda en el
-  AuditLog.
+- Cada key declara un alcance (`project` por defecto, o `workspace` / `user`).
+  Las keys amplias exigen `projectId` en cada tool; usa `list_projects` primero.
+  Toda llamada queda en el AuditLog.
 - Al ser serverless, la primera llamada tras un rato de inactividad paga un cold
   start (~1s). No hay estado en memoria entre llamadas, y el servidor MCP es
   stateless, así que no afecta la corrección.

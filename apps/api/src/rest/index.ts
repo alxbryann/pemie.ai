@@ -5,6 +5,7 @@ import { authRoutes } from "./auth.js";
 import { workspaceRoutes } from "./workspaces.js";
 import { invitationRoutes } from "./invitations.js";
 import { webhookRoutes } from "./webhooks.js";
+import { channelRoutes } from "./channels.js";
 
 /**
  * Monta la interfaz REST/JSON (consumida por el frontend web) sobre `app`.
@@ -36,12 +37,12 @@ export function registerRest(app: Hono<AppEnv>) {
       interfaces: {
         rest: "/api/**  (frontend web)",
         mcp: "/mcp      (agentes, API key + scopes)",
-        webhooks: "/webhooks/github (ingesta)",
+        webhooks: "/webhooks/github | /webhooks/telegram",
       },
     })
   );
 
-  // Webhooks de ingesta (F2): fuera de /api/*, autenticados por firma HMAC.
+  // Webhooks de ingesta (F2) y Telegram: fuera de /api/*, autenticados por secreto.
   // El alias bajo /api existe porque en Vercel las funciones viven ahí y el
   // rewrite de /webhooks/* reescribe la ruta antes de llegar a la app.
   app.route("/webhooks", webhookRoutes());
@@ -54,4 +55,5 @@ export function registerRest(app: Hono<AppEnv>) {
   app.route("/api/auth", authRoutes());
   app.route("/api/workspaces", workspaceRoutes());
   app.route("/api/invitations", invitationRoutes());
+  app.route("/api/me/channels", channelRoutes());
 }

@@ -53,6 +53,7 @@ const createAgentSchema = z.object({
 });
 const createApiKeySchema = z.object({
   name: z.string().min(2),
+  scopeLevel: z.enum(["project", "workspace", "user"]).optional(),
   projectId: z.string().optional(),
   agentId: z.string().optional(),
   scopes: z.array(z.string()).min(1),
@@ -417,6 +418,7 @@ export function workspaceRoutes() {
     // El servicio valida que los scopes existan; aquí solo pasamos los datos.
     const result = await agentsSvc.createApiKey(user.id, ws.id, {
       name: body.data.name,
+      scopeLevel: body.data.scopeLevel,
       projectId: body.data.projectId,
       agentId: body.data.agentId,
       scopes: body.data.scopes,

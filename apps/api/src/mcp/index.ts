@@ -1,14 +1,14 @@
 // Interfaz MCP (F4) — consumida por agentes. Es una capa delgada de JSON-RPC
 // 2.0 sobre HTTP (el protocolo MCP) encima de la MISMA capa de servicios que
 // usa el REST. No contiene lógica de negocio: autentica la API key (Bearer),
-// exige el scope de cada tool, delega en las operaciones `opXxx` (ya acotadas
-// al proyecto de la key) y registra cada llamada en el AuditLog.
+// exige el scope de cada tool, resuelve el proyecto (project/workspace/user
+// keys), delega en las operaciones `opXxx` y registra cada llamada en el AuditLog.
 
 import { Hono } from "hono";
 import type { ApiKey } from "@prisma/client";
 import type { ApiScope } from "@pemie/shared";
 import type { AppEnv } from "../rest/http.js";
-import { ServiceError, forbidden } from "../services/errors.js";
+import { ServiceError, badRequest, forbidden } from "../services/errors.js";
 import * as agents from "../services/agents.js";
 import * as ingest from "../services/ingest.js";
 import * as stats from "../services/stats.js";
@@ -21,14 +21,39 @@ const SERVER_INFO = { name: "pemie.ai", version: "0.1.0" };
 
 interface McpContext {
   key: ApiKey;
+  /** Proyecto fijado en la key (solo scopeLevel=project). */
   projectId: string | null;
 }
 
-/** Exige que la API key esté vinculada a un proyecto. */
-function requireProject(ctx: McpContext): string {
-  if (!ctx.projectId)
-    throw forbidden("Esta API key no está vinculada a un proyecto; créala con un projectId");
-  return ctx.projectId;
+/** projectId opcional en schema; obligatorio en runtime si la key es amplia. */
+const PROJECT_ID_PROP = {
+  projectId: {
+    type: "string",
+    description:
+      "ID del proyecto. Obligatorio con keys workspace/user; opcional (e ignorado si no coincide) con key de proyecto.",
+  },
+};
+
+function withProjectId(
+  properties: Record<string, unknown> = {},
+  required: string[] = []
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: { ...PROJECT_ID_PROP, ...properties },
+    ...(required.length ? { required } : {}),
+    additionalProperties: false,
+  };
+}
+
+/**
+ * Resuelve el projectId efectivo y autoriza el scope ∩ rol del dueño.
+ */
+async function requireProject(ctx: McpContext, args: Record<string, unknown>, scope: ApiScope): Promise<string> {
+  const fromArgs = typeof args.projectId === "string" ? args.projectId : null;
+  const { project, workspaceId } = await agents.resolveProjectForKey(ctx.key, fromArgs);
+  await agents.authorizeKeyForProject(ctx.key, scope, workspaceId);
+  return project.id;
 }
 
 // ─── Registro de tools ─────────────────────────────────────────────────────
@@ -36,81 +61,99 @@ function requireProject(ctx: McpContext): string {
 interface McpTool {
   name: string;
   description: string;
-  scope: ApiScope;
+  /** Scope requerido; null = solo autenticación (tools de descubrimiento). */
+  scope: ApiScope | null;
   inputSchema: Record<string, unknown>;
   handler: (ctx: McpContext, args: Record<string, unknown>) => Promise<unknown>;
 }
 
-const OBJECT_SCHEMA = { type: "object", properties: {}, additionalProperties: false };
-
 const TOOLS: McpTool[] = [
+  {
+    name: "list_workspaces",
+    description:
+      "Lista workspaces accesibles con esta API key. Útil con keys workspace/user antes de list_projects.",
+    scope: null,
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    handler: (ctx) => agents.listWorkspacesForKey(ctx.key),
+  },
+  {
+    name: "list_projects",
+    description:
+      "Lista proyectos accesibles con esta API key. Con keys amplias, pasa el projectId resultante a las demás tools.",
+    scope: null,
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: { type: "string", description: "Filtrar por workspace (opcional)" },
+      },
+      additionalProperties: false,
+    },
+    handler: (ctx, args) =>
+      agents.listProjectsForKey(
+        ctx.key,
+        typeof args.workspaceId === "string" ? args.workspaceId : undefined
+      ),
+  },
   {
     name: "get_project_context",
     description: "Objetivo actual, stats de commits y último informe del proyecto.",
     scope: "commits:read",
-    inputSchema: OBJECT_SCHEMA,
-    handler: async (ctx) => {
-      const projectId = requireProject(ctx);
+    inputSchema: withProjectId(),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "commits:read");
       const [objective, projectStats, latest] = await Promise.all([
         reports.opGetObjective(projectId),
         stats.opProjectStats(projectId),
         reports.opListReports(projectId, { limit: 1 }),
       ]);
-      return { objective, stats: projectStats, latestReport: latest[0] ?? null };
+      return { projectId, objective, stats: projectStats, latestReport: latest[0] ?? null };
     },
   },
   {
     name: "list_commits",
     description: "Lista commits del proyecto (filtrable por dominio o contribuidor).",
     scope: "commits:read",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number" },
-        domain: { type: "string" },
-        contributorId: { type: "string" },
-      },
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      ingest.opListCommits(requireProject(ctx), {
+    inputSchema: withProjectId({
+      limit: { type: "number" },
+      domain: { type: "string" },
+      contributorId: { type: "string" },
+    }),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "commits:read");
+      return ingest.opListCommits(projectId, {
         limit: typeof args.limit === "number" ? args.limit : undefined,
         domain: typeof args.domain === "string" ? args.domain : undefined,
         contributorId: typeof args.contributorId === "string" ? args.contributorId : undefined,
-      }),
+      });
+    },
   },
   {
     name: "get_evaluation",
     description: "Últimos informes de avance del proyecto.",
     scope: "reports:read",
-    inputSchema: {
-      type: "object",
-      properties: { limit: { type: "number" } },
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      reports.opListReports(requireProject(ctx), {
+    inputSchema: withProjectId({ limit: { type: "number" } }),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "reports:read");
+      return reports.opListReports(projectId, {
         limit: typeof args.limit === "number" ? args.limit : 10,
-      }),
+      });
+    },
   },
   {
     name: "publish_report",
     description: "Publica (o actualiza) un informe de avance. Idempotente por fecha+slot.",
     scope: "reports:write",
-    inputSchema: {
-      type: "object",
-      properties: {
-        date: { type: "string", description: "YYYY-MM-DD para scope 'day'" },
-        slot: { type: "string" },
-        scope: { type: "string", enum: ["day", "general"] },
-        comment: { type: "string" },
-        verdict: { type: "string" },
-        score: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      reports.opPublishReport(requireProject(ctx), {
+    inputSchema: withProjectId({
+      date: { type: "string", description: "YYYY-MM-DD para scope 'day'" },
+      slot: { type: "string" },
+      scope: { type: "string", enum: ["day", "general"] },
+      comment: { type: "string" },
+      verdict: { type: "string" },
+      score: { type: "number" },
+    }),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "reports:write");
+      return reports.opPublishReport(projectId, {
         date: args.date as string | undefined,
         slot: args.slot as string | undefined,
         scope: args.scope as "day" | "general" | undefined,
@@ -118,38 +161,37 @@ const TOOLS: McpTool[] = [
         verdict: args.verdict as string | undefined,
         score: typeof args.score === "number" ? args.score : undefined,
         agentId: ctx.key.agentId ?? undefined,
-      }),
+      });
+    },
   },
   {
     name: "list_notes",
     description: "Lista notas/feedback del proyecto (filtrable por estado).",
     scope: "notes:read",
-    inputSchema: {
-      type: "object",
-      properties: { status: { type: "string", enum: ["pending", "processed"] } },
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      reports.opListNotes(requireProject(ctx), {
+    inputSchema: withProjectId({
+      status: { type: "string", enum: ["pending", "processed"] },
+    }),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "notes:read");
+      return reports.opListNotes(projectId, {
         status: args.status === "pending" || args.status === "processed" ? args.status : undefined,
-      }),
+      });
+    },
   },
   {
     name: "answer_note",
     description: "Responde una nota y opcionalmente la asocia a un informe.",
     scope: "notes:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         noteId: { type: "string" },
         response: { type: "string" },
         reportId: { type: "string" },
       },
-      required: ["noteId", "response"],
-      additionalProperties: false,
-    },
+      ["noteId", "response"]
+    ),
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "notes:write");
       const note = await reports.getNoteById(String(args.noteId));
       if (!note || note.projectId !== projectId) throw forbidden("La nota no pertenece a este proyecto");
       return reports.opAnswerNote(note, String(args.response), args.reportId as string | undefined);
@@ -159,44 +201,43 @@ const TOOLS: McpTool[] = [
     name: "get_objective",
     description: "Objetivo actual del proyecto.",
     scope: "objective:read",
-    inputSchema: OBJECT_SCHEMA,
-    handler: (ctx) => reports.opGetObjective(requireProject(ctx)),
+    inputSchema: withProjectId(),
+    handler: async (ctx, args) => reports.opGetObjective(await requireProject(ctx, args, "objective:read")),
   },
   {
     name: "update_objective",
     description: "Fija o actualiza el objetivo del proyecto (guarda historial).",
     scope: "objective:write",
-    inputSchema: {
-      type: "object",
-      properties: { description: { type: "string" } },
-      required: ["description"],
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      reports.opSetObjective(requireProject(ctx), String(args.description), null),
+    inputSchema: withProjectId({ description: { type: "string" } }, ["description"]),
+    handler: async (ctx, args) =>
+      reports.opSetObjective(
+        await requireProject(ctx, args, "objective:write"),
+        String(args.description),
+        null
+      ),
   },
   {
     name: "list_user_stories",
     description: "Lista las Historias de Usuario del proyecto (filtrable por estado/épica).",
     scope: "stories:read",
-    inputSchema: {
-      type: "object",
-      properties: { status: { type: "string" }, epicId: { type: "string" } },
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      stories.opListStories(requireProject(ctx), {
+    inputSchema: withProjectId({
+      status: { type: "string" },
+      epicId: { type: "string" },
+    }),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "stories:read");
+      return stories.opListStories(projectId, {
         status: args.status as string | undefined,
         epicId: args.epicId as string | undefined,
-      }),
+      });
+    },
   },
   {
     name: "create_user_story",
     description: "Crea una Historia de Usuario (narrativa role/want/benefit + criterios).",
     scope: "stories:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         title: { type: "string" },
         narrative: {
           type: "object",
@@ -214,12 +255,12 @@ const TOOLS: McpTool[] = [
         epicId: { type: "string" },
         status: { type: "string" },
       },
-      required: ["title"],
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      stories.opCreateStory(
-        requireProject(ctx),
+      ["title"]
+    ),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "stories:write");
+      return stories.opCreateStory(
+        projectId,
         {
           title: String(args.title),
           narrative: args.narrative as never,
@@ -230,7 +271,8 @@ const TOOLS: McpTool[] = [
           status: args.status as string | undefined,
         },
         { createdByAgentId: ctx.key.agentId ?? undefined }
-      ),
+      );
+    },
   },
   {
     name: "update_user_story",
@@ -239,6 +281,7 @@ const TOOLS: McpTool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        ...PROJECT_ID_PROP,
         storyId: { type: "string" },
         title: { type: "string" },
         status: { type: "string" },
@@ -249,7 +292,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: true,
     },
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "stories:write");
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
       return stories.opUpdateStory(story, {
@@ -265,19 +308,18 @@ const TOOLS: McpTool[] = [
   },
   {
     name: "assign_user_story",
-    description: "Asigna (o desasigna, con assigneeId null) una HU a un contributor del proyecto; sincroniza la Card vinculada.",
+    description:
+      "Asigna (o desasigna, con assigneeId null) una HU a un contributor del proyecto; sincroniza la Card vinculada.",
     scope: "stories:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         storyId: { type: "string" },
         assigneeId: { type: ["string", "null"] },
       },
-      required: ["storyId"],
-      additionalProperties: false,
-    },
+      ["storyId"]
+    ),
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "stories:write");
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
       const assigneeId = args.assigneeId == null ? null : String(args.assigneeId);
@@ -291,35 +333,35 @@ const TOOLS: McpTool[] = [
     name: "list_contributors",
     description: "Lista los contribuidores del proyecto (candidatos a asignar HUs/tarjetas).",
     scope: "stories:read",
-    inputSchema: OBJECT_SCHEMA,
-    handler: (ctx) => stories.opListContributors(requireProject(ctx)),
+    inputSchema: withProjectId(),
+    handler: async (ctx, args) =>
+      stories.opListContributors(await requireProject(ctx, args, "stories:read")),
   },
   {
     name: "list_board",
     description: "Devuelve el tablero Kanban con columnas y tarjetas.",
     scope: "board:read",
-    inputSchema: OBJECT_SCHEMA,
-    handler: (ctx) => board.opListBoard(requireProject(ctx)),
+    inputSchema: withProjectId(),
+    handler: async (ctx, args) => board.opListBoard(await requireProject(ctx, args, "board:read")),
   },
   {
     name: "create_card",
     description: "Crea una tarjeta en el tablero (opcionalmente ligada a una HU).",
     scope: "board:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         title: { type: "string" },
         type: { type: "string", enum: ["story", "task", "bug"] },
         description: { type: "string" },
         columnId: { type: "string" },
         userStoryId: { type: "string" },
       },
-      required: ["title"],
-      additionalProperties: false,
-    },
-    handler: (ctx, args) =>
-      board.opCreateCard(
-        requireProject(ctx),
+      ["title"]
+    ),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "board:write");
+      return board.opCreateCard(
+        projectId,
         {
           title: String(args.title),
           type: args.type as string | undefined,
@@ -328,24 +370,23 @@ const TOOLS: McpTool[] = [
           userStoryId: args.userStoryId as string | undefined,
         },
         { actorType: "agent", actorId: ctx.key.agentId ?? ctx.key.id }
-      ),
+      );
+    },
   },
   {
     name: "move_card",
     description: "Mueve una tarjeta a otra columna del tablero.",
     scope: "board:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         cardId: { type: "string" },
         columnId: { type: "string" },
         order: { type: "number" },
       },
-      required: ["cardId", "columnId"],
-      additionalProperties: false,
-    },
+      ["cardId", "columnId"]
+    ),
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "board:write");
       const card = await board.getCardWithProject(String(args.cardId));
       if (!card || card.board.projectId !== projectId)
         throw forbidden("La tarjeta no pertenece a este proyecto");
@@ -360,36 +401,33 @@ const TOOLS: McpTool[] = [
     name: "link_story_to_card",
     description: "Vincula una tarjeta existente del tablero a una Historia de Usuario sin tarjeta.",
     scope: "board:write",
-    inputSchema: {
-      type: "object",
-      properties: {
+    inputSchema: withProjectId(
+      {
         cardId: { type: "string" },
         storyId: { type: "string" },
       },
-      required: ["cardId", "storyId"],
-      additionalProperties: false,
-    },
+      ["cardId", "storyId"]
+    ),
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "board:write");
       const card = await board.getCardWithProject(String(args.cardId));
       if (!card || card.board.projectId !== projectId) throw forbidden("La tarjeta no pertenece a este proyecto");
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
-      return board.opLinkStoryToCard(card, story, { actorType: "agent", actorId: ctx.key.agentId ?? ctx.key.id });
+      return board.opLinkStoryToCard(card, story, {
+        actorType: "agent",
+        actorId: ctx.key.agentId ?? ctx.key.id,
+      });
     },
   },
   {
     name: "get_story_commit_progress",
-    description: "Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de una HU (ej. PRJ-123).",
+    description:
+      "Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de una HU (ej. PRJ-123).",
     scope: "stories:read",
-    inputSchema: {
-      type: "object",
-      properties: { storyId: { type: "string" } },
-      required: ["storyId"],
-      additionalProperties: false,
-    },
+    inputSchema: withProjectId({ storyId: { type: "string" } }, ["storyId"]),
     handler: async (ctx, args) => {
-      const projectId = requireProject(ctx);
+      const projectId = await requireProject(ctx, args, "stories:read");
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
       return stories.opGetStoryCommitProgress(story);
@@ -398,6 +436,31 @@ const TOOLS: McpTool[] = [
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+
+/** Invoca una tool MCP en-proceso (p. ej. bot Telegram) sin HTTP. */
+export async function invokeMcpTool(
+  key: ApiKey,
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<unknown> {
+  const tool = TOOL_BY_NAME.get(name);
+  if (!tool) throw badRequest(`Tool desconocida: ${name}`, "unknown_tool");
+  agents.assertKeyUsable(key);
+  if (tool.scope) agents.requireScope(key, tool.scope);
+  const ctx: McpContext = { key, projectId: key.projectId };
+  const result = await tool.handler(ctx, args);
+  await auditToolCall(ctx, name, args, typeof args.projectId === "string" ? args.projectId : key.projectId);
+  return result;
+}
+
+export function listMcpToolDefs() {
+  return TOOLS.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: t.inputSchema,
+    scope: t.scope,
+  }));
+}
 
 // ─── Registro de resources ─────────────────────────────────────────────────
 
@@ -422,21 +485,21 @@ const RESOURCES: McpResource[] = [
     name: "commits",
     description: "Commits del proyecto.",
     scope: "commits:read",
-    read: (ctx) => ingest.opListCommits(requireProject(ctx), {}),
+    read: (ctx) => TOOL_BY_NAME.get("list_commits")!.handler(ctx, {}),
   },
   {
     uri: "pemie://project/reports",
     name: "reports",
     description: "Informes de avance.",
     scope: "reports:read",
-    read: (ctx) => reports.opListReports(requireProject(ctx), {}),
+    read: (ctx) => TOOL_BY_NAME.get("get_evaluation")!.handler(ctx, {}),
   },
   {
     uri: "pemie://project/notes",
     name: "notes",
     description: "Notas/feedback.",
     scope: "notes:read",
-    read: (ctx) => reports.opListNotes(requireProject(ctx), {}),
+    read: (ctx) => TOOL_BY_NAME.get("list_notes")!.handler(ctx, {}),
   },
 ];
 
@@ -478,7 +541,7 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
 
     case "notifications/initialized":
     case "notifications/cancelled":
-      return undefined; // notificación: sin respuesta
+      return undefined;
 
     case "ping":
       return rpcResult(id, {});
@@ -492,14 +555,15 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
       const name = String(req.params?.name ?? "");
       const tool = TOOL_BY_NAME.get(name);
       if (!tool) return rpcError(id, -32602, `Tool desconocida: ${name}`);
-      agents.requireScope(ctx.key, tool.scope);
+      if (tool.scope) agents.requireScope(ctx.key, tool.scope);
       const args = (req.params?.arguments as Record<string, unknown>) ?? {};
       try {
         const result = await tool.handler(ctx, args);
-        await auditToolCall(ctx, name, args);
+        const resolvedPid =
+          typeof args.projectId === "string" ? args.projectId : ctx.projectId;
+        await auditToolCall(ctx, name, args, resolvedPid);
         return rpcResult(id, asText(result));
       } catch (err) {
-        // Errores de negocio se devuelven como resultado isError (convención MCP).
         if (err instanceof ServiceError)
           return rpcResult(id, { ...asText({ error: err.message, code: err.code }), isError: true });
         throw err;
@@ -532,7 +596,6 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
   }
 }
 
-/** Envuelve handleRpc: convierte ServiceError (auth/scope) en error JSON-RPC. */
 async function safeHandle(ctx: McpContext, req: RpcRequest): Promise<object | undefined> {
   try {
     return await handleRpc(ctx, req);
@@ -542,32 +605,40 @@ async function safeHandle(ctx: McpContext, req: RpcRequest): Promise<object | un
   }
 }
 
-function auditToolCall(ctx: McpContext, name: string, args: Record<string, unknown>) {
+async function auditToolCall(
+  ctx: McpContext,
+  name: string,
+  args: Record<string, unknown>,
+  projectId: string | null
+) {
+  let workspaceId = ctx.key.workspaceId;
+  if (projectId) {
+    try {
+      const { workspaceId: ws } = await agents.resolveProjectForKey(ctx.key, projectId);
+      workspaceId = ws;
+    } catch {
+      // best-effort: usa home workspace de la key
+    }
+  }
   return agents.audit({
-    workspaceId: ctx.key.workspaceId,
+    workspaceId,
     actorType: "agent",
     actorId: ctx.key.agentId ?? ctx.key.id,
     action: `mcp.${name}`,
     entity: "Project",
-    entityId: ctx.projectId ?? undefined,
-    meta: { args },
+    entityId: projectId ?? undefined,
+    meta: { args, scopeLevel: ctx.key.scopeLevel ?? "project" },
   });
 }
 
 /**
  * Router de la interfaz MCP. `GET /` es un descriptor público; `POST /` es el
  * endpoint JSON-RPC autenticado por API key (`Authorization: Bearer <key>`).
- * `app.ts` lo monta en `/mcp` (URL pública) y en `/api/mcp` (ruta interna en
- * Vercel, donde las funciones viven bajo /api).
  */
 export function mcpRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.get("/", (c) => {
-    // Un cliente MCP de transporte "Streamable HTTP" abre este GET pidiendo SSE
-    // para recibir mensajes iniciados por el servidor. Este servidor es
-    // request/response puro: el 405 es la respuesta que la especificación indica
-    // para "no ofrezco stream", y así el cliente sigue con el POST sin colgarse.
     if (c.req.header("accept")?.includes("text/event-stream")) {
       return c.json({ error: "Este servidor MCP no ofrece SSE; usa POST" }, 405);
     }
@@ -595,7 +666,6 @@ export function mcpRoutes(): Hono<AppEnv> {
     if (!body) return c.json(rpcError(null, -32700, "Parse error"), 400);
     const ctx: McpContext = { key, projectId: key.projectId };
 
-    // Batch (array) o petición única.
     if (Array.isArray(body)) {
       const results = await Promise.all(body.map((r) => safeHandle(ctx, r)));
       return c.json(results.filter((r): r is object => r !== undefined));
@@ -604,7 +674,7 @@ export function mcpRoutes(): Hono<AppEnv> {
       return c.json(rpcError(body.id ?? null, -32600, "Invalid Request"), 400);
 
     const res = await safeHandle(ctx, body);
-    if (res === undefined) return c.body(null, 204); // notificación
+    if (res === undefined) return c.body(null, 204);
     return c.json(res);
   });
 

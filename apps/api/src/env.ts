@@ -27,6 +27,16 @@ const schema = z.object({
 
   ANTHROPIC_API_KEY: z.string().optional(),
 
+  // Bot de Telegram (canal on-demand). Opcional en local; requerido en prod
+  // si se usa el canal. Webhook: POST /webhooks/telegram
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+  /** Username del bot sin @ (para deep links t.me/…). */
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
+  // AES-256 key (32 bytes en base64) para cifrar Anthropic BYOK del usuario.
+  // Generar: openssl rand -base64 32
+  CHANNEL_SECRETS_KEY: z.string().optional(),
+
   // Envío de correo (invitaciones). Si RESEND_API_KEY está vacío, el mailer
   // cae a modo dev: usa un buzón de prueba (Ethereal) y loguea el preview.
   RESEND_API_KEY: z.string().optional(),

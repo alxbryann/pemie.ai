@@ -35,6 +35,20 @@ export const API_SCOPES = [
 
 export type ApiScope = (typeof API_SCOPES)[number];
 
+/** Alcance de una API key MCP. */
+export const API_KEY_SCOPE_LEVELS = ["project", "workspace", "user"] as const;
+export type ApiKeyScopeLevel = (typeof API_KEY_SCOPE_LEVELS)[number];
+
+/** Proveedores LLM BYOK para el canal Telegram. */
+export const CHANNEL_LLM_PROVIDERS = ["anthropic", "openai", "deepseek"] as const;
+export type ChannelLlmProvider = (typeof CHANNEL_LLM_PROVIDERS)[number];
+
+export const CHANNEL_LLM_DEFAULT_MODELS: Record<ChannelLlmProvider, string> = {
+  anthropic: "claude-sonnet-4-20250514",
+  openai: "gpt-4o",
+  deepseek: "deepseek-chat",
+};
+
 /**
  * Configuración de categorías/"dominios" por proyecto. Reemplaza el
  * hardcode tofu/pipeline/reuniones del gotom-reports original: cada

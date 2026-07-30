@@ -271,6 +271,8 @@ export interface ApiKeyPublic {
   name: string;
   prefix: string;
   scopes: string[];
+  scopeLevel: "project" | "workspace" | "user";
+  ownerUserId: string | null;
   projectId: string | null;
   agentId: string | null;
   lastUsedAt: string | null;
@@ -286,6 +288,22 @@ export interface AuditLog {
   entityId: string | null;
   meta: unknown;
   createdAt: string;
+}
+
+export interface TelegramChannelStatus {
+  botConfigured: boolean;
+  botUsername: string | null;
+  linked: boolean;
+  telegramUsername: string | null;
+  linkedAt: string | null;
+  enabled: boolean;
+  hasLlmKey: boolean;
+  llmKeyLast4: string | null;
+  llmProvider: "anthropic" | "openai" | "deepseek";
+  model: string;
+  defaultProject: { id: string; name: string; slug: string } | null;
+  apiKeyPrefix: string | null;
+  ready: boolean;
 }
 
 // ─── F6: kanban ──────────────────────────────────────────────────────
@@ -450,12 +468,41 @@ export const api = {
     list: (w: string) => get<{ apiKeys: ApiKeyPublic[] }>(`/api/workspaces/${w}/api-keys`),
     create: (
       w: string,
-      input: { name: string; projectId: string; agentId?: string; scopes: string[] }
+      input: {
+        name: string;
+        scopeLevel?: "project" | "workspace" | "user";
+        projectId?: string;
+        agentId?: string;
+        scopes: string[];
+      }
     ) => post<{ apiKey: ApiKeyPublic; key: string }>(`/api/workspaces/${w}/api-keys`, input),
     revoke: (w: string, id: string) => del<{ ok: true }>(`/api/workspaces/${w}/api-keys/${id}`),
   },
   audit: {
     list: (w: string) => get<{ auditLogs: AuditLog[] }>(`/api/workspaces/${w}/audit`),
+  },
+
+  channels: {
+    telegramStatus: () => get<{ channel: TelegramChannelStatus }>("/api/me/channels/telegram"),
+    createLinkToken: (projectId?: string) =>
+      post<{ token: string; expiresAt: string; deepLink: string | null; startPayload: string }>(
+        "/api/me/channels/telegram/link-token",
+        { projectId }
+      ),
+    setLlmKey: (
+      apiKey: string,
+      opts?: { provider?: "anthropic" | "openai" | "deepseek"; model?: string }
+    ) =>
+      put<{ channel: TelegramChannelStatus }>("/api/me/channels/telegram/llm-key", {
+        apiKey,
+        provider: opts?.provider,
+        model: opts?.model,
+      }),
+    setDefaultProject: (projectId: string | null) =>
+      put<{ channel: TelegramChannelStatus }>("/api/me/channels/telegram/default-project", {
+        projectId,
+      }),
+    disconnect: () => post<{ ok: true }>("/api/me/channels/telegram/disconnect"),
   },
 
   // ─── F6: kanban ────────────────────────────────────────────────────
