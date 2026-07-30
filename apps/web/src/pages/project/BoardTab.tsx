@@ -1,9 +1,32 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, type Board } from "../../lib/api.js";
+import { useEffect, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { api, ApiError, type Board, type Card as CardData, type Column } from "../../lib/api.js";
 import {
   Badge,
   Button,
   Card,
+  DragHandle,
   EmptyState,
   ErrorText,
   Input,
@@ -11,13 +34,175 @@ import {
   SkeletonBoard,
 } from "../../components/ui.js";
 
+/** Columna que contiene la tarjeta, o el id de la propia columna si se soltó en un hueco vacío. */
+function findContainer(board: Board, id: string): string | undefined {
+  if (board.columns.some((c) => c.id === id)) return id;
+  return board.columns.find((c) => c.cards.some((card) => card.id === id))?.id;
+}
+
+function cardLabel(board: Board, id: string) {
+  return board.columns.flatMap((c) => c.cards).find((c) => c.id === id)?.title ?? id;
+}
+
+function columnLabel(board: Board, id: string) {
+  return board.columns.find((c) => c.id === id)?.name ?? id;
+}
+
+function announcements(board: Board): Announcements {
+  return {
+    onDragStart: ({ active }) => `Levantaste la tarjeta "${cardLabel(board, String(active.id))}".`,
+    onDragOver: ({ active, over }) =>
+      over
+        ? `Tarjeta "${cardLabel(board, String(active.id))}" sobre la columna "${columnLabel(
+            board,
+            findContainer(board, String(over.id)) ?? String(over.id)
+          )}".`
+        : `Tarjeta "${cardLabel(board, String(active.id))}" fuera de cualquier columna.`,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `Tarjeta "${cardLabel(board, String(active.id))}" soltada en la columna "${columnLabel(
+            board,
+            findContainer(board, String(over.id)) ?? String(over.id)
+          )}".`
+        : `Se canceló el movimiento de "${cardLabel(board, String(active.id))}".`,
+    onDragCancel: ({ active }) => `Se canceló el movimiento de "${cardLabel(board, String(active.id))}".`,
+  };
+}
+
+function CardBody({ card }: { card: CardData }) {
+  return (
+    <>
+      <p className="text-body-sm text-ink-900">{card.title}</p>
+      <Badge tone="neutral" mono>
+        {card.type}
+      </Badge>
+      {card.userStory && (
+        <p className="mt-1.5 basis-full">
+          <Badge tone="brand" mono>
+            {card.userStory.key}
+          </Badge>
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Vista flotante que sigue al puntero mientras se arrastra (dnd-kit `DragOverlay`). */
+function CardPreview({ card }: { card: CardData }) {
+  return (
+    <Card padding="sm" className="w-64 rotate-2 shadow-lg">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <CardBody card={card} />
+      </div>
+    </Card>
+  );
+}
+
+function SortableCard({
+  card,
+  columns,
+  onMoveViaSelect,
+}: {
+  card: CardData;
+  columns: Column[];
+  onMoveViaSelect: (cardId: string, columnId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+  });
+
+  return (
+    <Card
+      ref={setNodeRef}
+      padding="sm"
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={isDragging ? "opacity-40" : ""}
+    >
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          className="mt-0.5 shrink-0 touch-none cursor-grab text-ink-300 transition-colors hover:text-ink-600 active:cursor-grabbing"
+          aria-label={`Reordenar "${card.title}"`}
+          {...attributes}
+          {...listeners}
+        >
+          <DragHandle />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <CardBody card={card} />
+          </div>
+          <label className="mt-2 block">
+            <span className="sr-only">Mover "{card.title}" a otra columna</span>
+            <Select
+              className="w-full !rounded-sm !py-1.5 !text-caption text-ink-500"
+              value={card.columnId}
+              onChange={(e) => onMoveViaSelect(card.id, e.target.value)}
+            >
+              {columns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function BoardColumn({
+  column,
+  columns,
+  onMoveViaSelect,
+}: {
+  column: Column;
+  columns: Column[];
+  onMoveViaSelect: (cardId: string, columnId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`w-64 shrink-0 snap-start rounded-xl border p-3 transition-colors duration-150 ${
+        isOver ? "border-blue-600 border-dashed bg-blue-100/40" : "border-line-100 bg-surface-50"
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-body-sm font-semibold text-ink-900">{column.name}</h4>
+        <span className="font-mono text-mono-label text-ink-400">{column.cards.length}</span>
+      </div>
+      <SortableContext items={column.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {column.cards.map((card) => (
+            <SortableCard key={card.id} card={card} columns={columns} onMoveViaSelect={onMoveViaSelect} />
+          ))}
+          {column.cards.length === 0 && <EmptyState compact title="Sin tarjetas" />}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
 export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeCard, setActiveCard] = useState<CardData | null>(null);
 
   const [title, setTitle] = useState("");
   const [type, setType] = useState("task");
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   async function load() {
     setError(null);
@@ -35,6 +220,24 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, proj]);
 
+  // Indica si hay más columnas fuera del viewport (el tablero solía cortarse sin aviso).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function update() {
+      setCanScrollLeft(el!.scrollLeft > 4);
+      setCanScrollRight(el!.scrollLeft + el!.clientWidth < el!.scrollWidth - 4);
+    }
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [board]);
+
   async function addCard(e: React.FormEvent) {
     e.preventDefault();
     if (title.trim().length < 1) return;
@@ -48,9 +251,79 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     }
   }
 
-  async function moveCard(id: string, columnId: string) {
-    await api.board.moveCard(ws, proj, id, columnId).catch(() => {});
-    await load();
+  async function persistMove(cardId: string, columnId: string, order?: number) {
+    try {
+      await api.board.moveCard(ws, proj, cardId, columnId, order);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo mover la tarjeta");
+      await load();
+    }
+  }
+
+  function moveCardViaSelect(id: string, columnId: string) {
+    void persistMove(id, columnId);
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    if (!board) return;
+    setActiveCard(board.columns.flatMap((c) => c.cards).find((c) => c.id === event.active.id) ?? null);
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over } = event;
+    if (!board || !over) return;
+    const activeContainer = findContainer(board, String(active.id));
+    const overContainer = findContainer(board, String(over.id));
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
+      const from = columns.find((c) => c.id === activeContainer);
+      const to = columns.find((c) => c.id === overContainer);
+      if (!from || !to) return prev;
+      const activeIndex = from.cards.findIndex((c) => c.id === active.id);
+      if (activeIndex === -1) return prev;
+      const [moved] = from.cards.splice(activeIndex, 1);
+      const overIndex = to.cards.findIndex((c) => c.id === over.id);
+      to.cards.splice(overIndex >= 0 ? overIndex : to.cards.length, 0, { ...moved, columnId: to.id });
+      return { ...prev, columns };
+    });
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setActiveCard(null);
+    const { active, over } = event;
+    if (!board || !over) return;
+    const container = findContainer(board, String(over.id));
+    if (!container) return;
+
+    let finalOrder: number | undefined;
+
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
+      const col = columns.find((c) => c.id === container);
+      if (!col) return prev;
+      const activeIndex = col.cards.findIndex((c) => c.id === active.id);
+      const overIndex = col.cards.findIndex((c) => c.id === over.id);
+      if (activeIndex === -1) return prev;
+      if (overIndex !== -1 && activeIndex !== overIndex) {
+        col.cards = arrayMove(col.cards, activeIndex, overIndex);
+      }
+      const idx = col.cards.findIndex((c) => c.id === active.id);
+      const prevCard = col.cards[idx - 1];
+      const nextCard = col.cards[idx + 1];
+      if (prevCard && nextCard) finalOrder = (prevCard.order + nextCard.order) / 2;
+      else if (prevCard) finalOrder = prevCard.order + 1;
+      else if (nextCard) finalOrder = nextCard.order - 1;
+      else finalOrder = 0;
+      col.cards[idx] = { ...col.cards[idx], columnId: container, order: finalOrder };
+      return { ...prev, columns };
+    });
+
+    await persistMove(String(active.id), container, finalOrder);
   }
 
   if (loading) return <SkeletonBoard />;
@@ -70,11 +343,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
             className="max-w-sm"
             aria-label="Nueva tarjeta"
           />
-          <Select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            aria-label="Tipo de tarjeta"
-          >
+          <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de tarjeta">
             <option value="task">task</option>
             <option value="story">story</option>
             <option value="bug">bug</option>
@@ -84,50 +353,36 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       </Card>
 
       {/* Columnas */}
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {board.columns.map((col) => (
-          <div
-            key={col.id}
-            className="w-64 shrink-0 rounded-xl border border-line-100 bg-surface-50 p-3"
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-body-sm font-semibold text-ink-900">{col.name}</h4>
-              <span className="font-mono text-mono-label text-ink-400">{col.cards.length}</span>
-            </div>
-            <div className="space-y-2">
-              {col.cards.map((card) => (
-                <Card key={card.id} padding="sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-body-sm text-ink-900">{card.title}</p>
-                    <Badge tone="neutral" mono>
-                      {card.type}
-                    </Badge>
-                  </div>
-                  {card.userStory && (
-                    <p className="mt-1.5">
-                      <Badge tone="brand" mono>
-                        {card.userStory.key}
-                      </Badge>
-                    </p>
-                  )}
-                  <Select
-                    className="mt-2 w-full"
-                    value={col.id}
-                    onChange={(e) => moveCard(card.id, e.target.value)}
-                  >
-                    {board.columns.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Card>
-              ))}
-              {col.cards.length === 0 && <EmptyState compact title="Sin tarjetas" />}
-            </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveCard(null)}
+        accessibility={{ announcements: announcements(board) }}
+      >
+        <div className="relative">
+          {canScrollLeft && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-surface-0 to-transparent"
+            />
+          )}
+          <div ref={scrollRef} className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 pr-1">
+            {board.columns.map((col) => (
+              <BoardColumn key={col.id} column={col} columns={board.columns} onMoveViaSelect={moveCardViaSelect} />
+            ))}
           </div>
-        ))}
-      </div>
+          {canScrollRight && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-surface-0 to-transparent"
+            />
+          )}
+        </div>
+        <DragOverlay>{activeCard ? <CardPreview card={activeCard} /> : null}</DragOverlay>
+      </DndContext>
     </div>
   );
 }
