@@ -121,7 +121,7 @@ function SortableCard({
       <div className="flex items-start gap-2">
         <button
           type="button"
-          className="mt-0.5 shrink-0 touch-none cursor-grab text-ink-300 transition-colors hover:text-ink-600 active:cursor-grabbing"
+          className="-m-1 grid h-8 w-8 shrink-0 touch-none place-items-center rounded-sm text-ink-300 transition-colors hover:text-ink-600 active:cursor-grabbing cursor-grab"
           aria-label={`Reordenar "${card.title}"`}
           {...attributes}
           {...listeners}
@@ -295,9 +295,12 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   async function handleDragEnd(event: DragEndEvent) {
     setActiveCard(null);
     const { active, over } = event;
-    if (!board || !over) return;
+    if (!board) return;
+    // Soltar fuera de cualquier columna: handleDragOver ya pudo haber movido la tarjeta
+    // de forma optimista a otro contenedor, así que hay que resincronizar con el servidor.
+    if (!over) return void load();
     const container = findContainer(board, String(over.id));
-    if (!container) return;
+    if (!container) return void load();
 
     let finalOrder: number | undefined;
 
@@ -359,7 +362,12 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
-        onDragCancel={() => setActiveCard(null)}
+        onDragCancel={() => {
+          setActiveCard(null);
+          // Cancelar (p. ej. Escape durante un drag por teclado) puede dejar el
+          // reordenamiento optimista de handleDragOver sin persistir — resincroniza.
+          void load();
+        }}
         accessibility={{ announcements: announcements(board) }}
       >
         <div className="relative">
