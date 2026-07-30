@@ -2,9 +2,10 @@
 // Reglas del sistema: radios sm/md/lg, borde hairline, sombra fría, acento azul único,
 // mono (IBM Plex) para etiquetas, comandos y métricas.
 
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -120,29 +121,31 @@ export function Switch({
 
 const CARD_PADDING = { sm: "p-3", md: "p-6", none: "" };
 
-export function Card({
-  className = "",
-  interactive = false,
-  padding = "md",
-  children,
-}: {
-  className?: string;
-  interactive?: boolean;
-  padding?: keyof typeof CARD_PADDING;
-  children: ReactNode;
-}) {
+// `forwardRef` + spread de `rest` para que primitivas como drag-and-drop (dnd-kit)
+// puedan adjuntar su `ref`/`style`/listeners sin envolver Card en un div extra.
+export const Card = forwardRef<
+  HTMLDivElement,
+  Omit<HTMLAttributes<HTMLDivElement>, "className"> & {
+    className?: string;
+    interactive?: boolean;
+    padding?: keyof typeof CARD_PADDING;
+    children: ReactNode;
+  }
+>(function Card({ className = "", interactive = false, padding = "md", children, ...rest }, ref) {
   return (
     <div
+      ref={ref}
       className={`rounded-lg border border-line-200 bg-surface-0 shadow-xs transition-[box-shadow,border-color,transform] duration-150 ${
         CARD_PADDING[padding]
       } ${
         interactive ? "cursor-pointer hover:-translate-y-0.5 hover:border-ink-300 hover:shadow-md" : ""
       } ${className}`}
+      {...rest}
     >
       {children}
     </div>
   );
-}
+});
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
@@ -448,6 +451,25 @@ export function DangerZone({
         {children}
       </div>
     </section>
+  );
+}
+
+// Affordance de arrastre: seis puntos, mismo peso visual en cualquier fondo del sistema.
+// Primitiva pensada para listas reordenables (tablero Kanban, backlog, etc.).
+export function DragHandle({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="10"
+      height="16"
+      viewBox="0 0 10 16"
+      fill="currentColor"
+      aria-hidden
+      className={className}
+    >
+      {[2, 8].flatMap((x) =>
+        [2, 8, 14].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.4" />)
+      )}
+    </svg>
   );
 }
 
