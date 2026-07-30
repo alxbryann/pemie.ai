@@ -55,15 +55,15 @@ const CONTROL =
   "rounded-sm border border-line-200 bg-surface-0 px-3.5 py-2.5 text-body text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-blue-600 focus:shadow-focus disabled:bg-surface-50 disabled:text-ink-400";
 
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${CONTROL} w-full ${className}`} {...props} />;
+  return <input className={`${CONTROL} w-full min-w-0 ${className}`} {...props} />;
 }
 
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${CONTROL} w-full leading-snug ${className}`} {...props} />;
+  return <textarea className={`${CONTROL} w-full min-w-0 leading-snug ${className}`} {...props} />;
 }
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${CONTROL} ${className}`} {...props} />;
+  return <select className={`${CONTROL} w-full min-w-0 max-w-full ${className}`} {...props} />;
 }
 
 export function Field({
@@ -76,7 +76,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1.5 block text-body-sm font-semibold text-ink-800">{label}</span>
       {children}
       {hint ? <span className="mt-1.5 block text-caption text-ink-400">{hint}</span> : null}
@@ -549,22 +549,24 @@ export function Modal({
         role="dialog"
         aria-modal
         aria-label={title}
-        className={`max-h-[85vh] w-full overflow-hidden rounded-xl border border-line-200 bg-surface-0 shadow-lg ${
+        className={`max-h-[85vh] w-full min-w-0 overflow-hidden rounded-xl border border-line-200 bg-surface-0 shadow-lg ${
           wide ? "max-w-2xl" : "max-w-lg"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line-100 p-4">
-          <h3 className="text-h4 text-ink-900">{title}</h3>
+        <div className="flex items-center justify-between gap-3 border-b border-line-100 p-4">
+          <h3 className="min-w-0 truncate text-h4 text-ink-900">{title}</h3>
           <button
             type="button"
-            className="text-body text-ink-400 transition-colors hover:text-ink-900"
+            className="shrink-0 text-body text-ink-400 transition-colors hover:text-ink-900"
             onClick={onClose}
           >
             Cerrar
           </button>
         </div>
-        <div className="max-h-[calc(85vh-3.5rem)] overflow-y-auto p-4">{children}</div>
+        <div className="max-h-[calc(85vh-3.5rem)] overflow-y-auto overflow-x-hidden p-4">
+          <div className="min-w-0">{children}</div>
+        </div>
       </div>
     </div>
   );

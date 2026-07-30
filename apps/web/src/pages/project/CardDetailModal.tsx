@@ -162,12 +162,12 @@ export default function CardDetailModal({
     <Modal title="Detalle de tarjeta" onClose={onClose} wide>
       <ErrorText>{error}</ErrorText>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Field label="Título">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Título" />
         </Field>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <Field label="Tipo">
             <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo">
               <option value="task">task</option>
@@ -204,7 +204,7 @@ export default function CardDetailModal({
           <CardDetailMetaSkeleton />
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
               <Field label="Asignado">
                 <Select
                   value={assigneeId}
@@ -235,15 +235,15 @@ export default function CardDetailModal({
               </Field>
             </div>
 
-            <div className="border-t border-line-100 pt-4">
+            <div className="min-w-0 border-t border-line-100 pt-4">
               <h4 className="mb-2 text-body-sm font-semibold text-ink-800">Actividad</h4>
               {activities.length === 0 ? (
                 <p className="text-body-sm text-ink-400">Sin actividad todavía.</p>
               ) : (
                 <ul className="space-y-2">
                   {activities.map((a) => (
-                    <li key={a.id} className="flex items-start justify-between gap-3 text-body-sm">
-                      <span className="text-ink-700">
+                    <li key={a.id} className="flex min-w-0 items-start justify-between gap-3 text-body-sm">
+                      <span className="min-w-0 break-words text-ink-700">
                         <span className="mr-2 inline-block">
                           <Badge tone="neutral" mono>
                             {a.actorType}
