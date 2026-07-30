@@ -372,6 +372,71 @@ export function Tabs({
   );
 }
 
+/** Panel plegable: cabecera siempre visible; el cuerpo se muestra u oculta. */
+export function Collapsible({
+  title,
+  description,
+  defaultOpen = false,
+  open: openControlled,
+  onOpenChange,
+  badge,
+  children,
+  className = "",
+}: {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  badge?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [uncontrolled, setUncontrolled] = useState(defaultOpen);
+  const open = openControlled ?? uncontrolled;
+
+  function toggle() {
+    const next = !open;
+    if (openControlled === undefined) setUncontrolled(next);
+    onOpenChange?.(next);
+  }
+
+  return (
+    <Card padding="none" className={className}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-start gap-3 px-6 py-4 text-left transition-colors hover:bg-surface-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
+      >
+        <span
+          aria-hidden
+          className={`mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center text-ink-400 transition-transform duration-150 ${
+            open ? "rotate-90" : ""
+          }`}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <path d="M3.2 1.2a.75.75 0 0 1 1.06 0l3.5 3.5a.75.75 0 0 1 0 1.06l-3.5 3.5A.75.75 0 1 1 3.2 8.2L6.05 5.35 3.2 2.5a.75.75 0 0 1 0-1.3Z" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-h4 text-ink-900">{title}</span>
+            {badge}
+          </span>
+          {description && open ? (
+            <span className="mt-1 block text-body-sm text-ink-500">{description}</span>
+          ) : null}
+        </span>
+        <span className="mt-0.5 shrink-0 font-mono text-caption uppercase text-ink-400">
+          {open ? "Ocultar" : "Mostrar"}
+        </span>
+      </button>
+      {open ? <div className="border-t border-line-100 px-6 py-5">{children}</div> : null}
+    </Card>
+  );
+}
+
 /* --------------------------------- utility -------------------------------- */
 
 // Eyebrow mono en mayúsculas — la etiqueta de sección del sistema.

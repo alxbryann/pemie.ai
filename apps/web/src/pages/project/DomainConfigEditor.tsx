@@ -6,7 +6,7 @@ import {
   type DomainConfig,
 } from "@pemie/shared";
 import { api, ApiError } from "../../lib/api.js";
-import { Badge, Button, Card, ErrorText, Field, Input } from "../../components/ui.js";
+import { Badge, Button, Collapsible, ErrorText, Field, Input } from "../../components/ui.js";
 
 function cloneConfig(config: DomainConfig): DomainConfig {
   return {
@@ -130,23 +130,27 @@ export default function DomainConfigEditor({
   }
 
   return (
-    <Card>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-h4 text-ink-900">Dominios</h3>
-          <p className="mt-1 text-body-sm text-ink-500">
-            Patrones (regex) sobre el mensaje del commit. Al guardar se reclasifican los commits
-            existentes.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={restoreDefault} disabled={saving}>
-            Restaurar default
-          </Button>
-          <Button size="sm" onClick={save} disabled={saving}>
-            {saving ? "Guardando…" : "Guardar"}
-          </Button>
-        </div>
+    <Collapsible
+      title="Dominios"
+      defaultOpen={false}
+      badge={
+        <Badge tone="neutral" mono>
+          {draft.categories.length}
+        </Badge>
+      }
+    >
+      <p className="mb-4 text-body-sm text-ink-500">
+        Patrones (regex) sobre el mensaje del commit. Al guardar se reclasifican los commits
+        existentes.
+      </p>
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={restoreDefault} disabled={saving}>
+          Restaurar default
+        </Button>
+        <Button size="sm" onClick={save} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
       </div>
 
       <ErrorText>{error}</ErrorText>
@@ -249,6 +253,6 @@ export default function DomainConfigEditor({
           </div>
         </Field>
       </div>
-    </Card>
+    </Collapsible>
   );
 }
