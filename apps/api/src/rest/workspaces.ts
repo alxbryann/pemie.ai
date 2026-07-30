@@ -106,12 +106,29 @@ const updateCardSchema = z.object({
   description: z.string().nullable().optional(),
   type: z.enum(["story", "task", "bug"]).optional(),
   assigneeId: z.string().nullable().optional(),
+  userStoryId: z.string().nullable().optional(),
   labels: z.unknown().optional(),
 });
 const moveCardSchema = z.object({
   columnId: z.string().min(1),
   order: z.number().optional(),
 });
+const domainCategorySchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  emoji: z.string().optional(),
+  matchers: z.array(z.string()).optional(),
+  primary: z.boolean().optional(),
+});
+const domainConfigSchema = z
+  .object({
+    categories: z.array(domainCategorySchema).min(1),
+    fallback: z.string().min(1),
+  })
+  .refine(
+    (c) => new Set(c.categories.map((x) => x.key)).size === c.categories.length,
+    { message: "duplicate_keys", path: ["categories"] }
+  );
 
 export function workspaceRoutes() {
   const app = new Hono<AppEnv>();
@@ -277,6 +294,15 @@ export function workspaceRoutes() {
     return c.json({ stats: await stats.projectStats(user.id, project.id) });
   });
 
+  app.put("/:slug/projects/:projectSlug/domain-config", async (c) => {
+    const user = requireUser(c);
+    const project = await resolveProject(c);
+    const body = domainConfigSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) throw badRequest("DomainConfig inválida", "invalid_body");
+    const result = await ingest.updateDomainConfig(user.id, project.id, body.data);
+    return c.json(result);
+  });
+
   // ─── F3: Objetivo, informes y notas (flujo Hermes generalizado) ────
   app.get("/:slug/projects/:projectSlug/objective", async (c) => {
     const user = requireUser(c);
@@ -438,6 +464,12 @@ export function workspaceRoutes() {
     });
   });
 
+  app.get("/:slug/projects/:projectSlug/contributors", async (c) => {
+    const user = requireUser(c);
+    const project = await resolveProject(c);
+    return c.json({ contributors: await stories.listContributors(user.id, project.id) });
+  });
+
   app.post("/:slug/projects/:projectSlug/user-stories", async (c) => {
     const user = requireUser(c);
     const project = await resolveProject(c);
@@ -481,6 +513,15 @@ export function workspaceRoutes() {
     const body = updateCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos de la tarjeta inválidos", "invalid_body");
     return c.json({ card: await board.updateCard(user.id, c.req.param("cardId"), body.data) });
+  });
+
+  app.get("/:slug/projects/:projectSlug/board/cards/:cardId/activities", async (c) => {
+    const user = requireUser(c);
+    await resolveProject(c);
+    const limit = Number(c.req.query("limit")) || undefined;
+    return c.json({
+      activities: await board.listCardActivities(user.id, c.req.param("cardId"), limit),
+    });
   });
 
   app.post("/:slug/projects/:projectSlug/board/cards/:cardId/move", async (c) => {

@@ -1,7 +1,7 @@
 // Cliente HTTP del backend pemie-api. El frontend es puro cliente: toda la
 // lógica de negocio vive en el backend. Aquí solo hay transporte + tipos.
 
-import type { Role } from "@pemie/shared";
+import type { DomainConfig, Role } from "@pemie/shared";
 
 // En producción el front y el API comparten dominio (el API corre como función
 // de Vercel bajo /api), así que la base es relativa: la cookie de sesión es
@@ -151,6 +151,7 @@ export interface Project {
   slug: string;
   description: string | null;
   key: string;
+  domainConfig: DomainConfig | null;
   createdAt: string;
   updatedAt: string;
   workspace: { name: string; slug: string };
@@ -299,6 +300,19 @@ export interface Card {
   userStory?: { id: string; key: string; title: string; status: string } | null;
   assigneeId: string | null;
   assignee?: Contributor | null;
+  labels?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+}
+export interface CardActivity {
+  id: string;
+  cardId: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  fromValue: string | null;
+  toValue: string | null;
+  createdAt: string;
 }
 export interface Column {
   id: string;
@@ -354,6 +368,11 @@ export const api = {
       post<{ project: Project }>(`/api/workspaces/${wsSlug}/projects`, input),
     get: (wsSlug: string, projectSlug: string) =>
       get<{ project: Project }>(`/api/workspaces/${wsSlug}/projects/${projectSlug}`),
+    updateDomainConfig: (wsSlug: string, projectSlug: string, config: DomainConfig) =>
+      put<{ config: DomainConfig; reclassified: number }>(
+        `/api/workspaces/${wsSlug}/projects/${projectSlug}/domain-config`,
+        config
+      ),
   },
 
   // Base de rutas por proyecto.
@@ -417,6 +436,9 @@ export const api = {
     update: (w: string, p: string, id: string, patchBody: Partial<UserStory>) =>
       patch<{ userStory: UserStory }>(`${pp(w, p)}/user-stories/${id}`, patchBody),
   },
+  contributors: {
+    list: (w: string, p: string) => get<{ contributors: Contributor[] }>(`${pp(w, p)}/contributors`),
+  },
 
   // ─── F4: agentes / API keys / audit ────────────────────────────────
   agents: {
@@ -442,12 +464,32 @@ export const api = {
     createCard: (
       w: string,
       p: string,
-      input: { title: string; type?: string; description?: string; columnId?: string; userStoryId?: string }
+      input: {
+        title: string;
+        type?: string;
+        description?: string;
+        columnId?: string;
+        userStoryId?: string;
+        assigneeId?: string;
+      }
     ) => post<{ card: Card }>(`${pp(w, p)}/board/cards`, input),
     moveCard: (w: string, p: string, id: string, columnId: string, order?: number) =>
       post<{ card: Card }>(`${pp(w, p)}/board/cards/${id}/move`, { columnId, order }),
-    updateCard: (w: string, p: string, id: string, patchBody: Partial<Card>) =>
-      patch<{ card: Card }>(`${pp(w, p)}/board/cards/${id}`, patchBody),
+    updateCard: (
+      w: string,
+      p: string,
+      id: string,
+      patchBody: {
+        title?: string;
+        description?: string | null;
+        type?: string;
+        assigneeId?: string | null;
+        userStoryId?: string | null;
+        labels?: unknown;
+      }
+    ) => patch<{ card: Card }>(`${pp(w, p)}/board/cards/${id}`, patchBody),
+    activities: (w: string, p: string, id: string) =>
+      get<{ activities: CardActivity[] }>(`${pp(w, p)}/board/cards/${id}/activities`),
   },
 
   invitations: {

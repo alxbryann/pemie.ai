@@ -16,3 +16,4 @@ packages/shared/dist/
 .vercel
 .env*
 .codegraph/
+.atl/

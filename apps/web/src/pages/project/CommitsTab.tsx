@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_DOMAIN_CONFIG, type DomainConfig } from "@pemie/shared";
 import {
   api,
   ApiError,
@@ -21,11 +22,14 @@ import {
   SkeletonList,
   Stat,
 } from "../../components/ui.js";
+import DomainConfigEditor from "./DomainConfigEditor.js";
 
 export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(null);
+  const [domainFilter, setDomainFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,17 +45,28 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const [query, setQuery] = useState("");
   const [linking, setLinking] = useState<string | null>(null);
 
-  async function load() {
+  const resolvedConfig = domainConfig ?? DEFAULT_DOMAIN_CONFIG;
+  const labelByKey = useMemo(() => {
+    const map = new Map(resolvedConfig.categories.map((c) => [c.key, c]));
+    return map;
+  }, [resolvedConfig]);
+
+  async function load(filter: string | null = domainFilter) {
     setError(null);
     try {
-      const [r, c, s] = await Promise.all([
+      const [r, c, s, p] = await Promise.all([
         api.repos.list(ws, proj),
-        api.commits.list(ws, proj, { limit: 50 }),
+        api.commits.list(ws, proj, {
+          limit: 50,
+          ...(filter ? { domain: filter } : {}),
+        }),
         api.stats.get(ws, proj),
+        api.projects.get(ws, proj),
       ]);
       setRepos(r.repos);
       setCommits(c.commits);
       setStats(s.stats);
+      setDomainConfig(p.project.domainConfig);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Error cargando la ingesta");
     } finally {
@@ -64,7 +79,8 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const autoSynced = useRef<string | null>(null);
   useEffect(() => {
     const key = `${ws}/${proj}`;
-    load().then(() => {
+    setDomainFilter(null);
+    load(null).then(() => {
       if (autoSynced.current === key) return;
       autoSynced.current = key;
       autoSync();
@@ -149,7 +165,19 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   async function unlink(id: string) {
-    await api.repos.unlink(ws, proj, id).then(load).catch(() => {});
+    await api.repos.unlink(ws, proj, id).then(() => load()).catch(() => {});
+  }
+
+  function toggleDomainFilter(key: string) {
+    const next = domainFilter === key ? null : key;
+    setDomainFilter(next);
+    void load(next);
+  }
+
+  function domainBadge(key: string) {
+    const cat = labelByKey.get(key);
+    const label = cat ? `${cat.emoji ? `${cat.emoji} ` : ""}${cat.label}` : key;
+    return label;
   }
 
   const linkedKeys = useMemo(
@@ -215,14 +243,46 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
                 <span className="text-body-sm text-ink-400">—</span>
               )}
               {stats.byDomain.map((d) => (
-                <Badge key={d.key} tone="neutral" mono>
-                  {d.label}: {d.count}
-                </Badge>
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => toggleDomainFilter(d.key)}
+                  className="rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                  aria-pressed={domainFilter === d.key}
+                >
+                  <Badge tone={domainFilter === d.key ? "brand" : "neutral"} mono>
+                    {d.emoji ? `${d.emoji} ` : ""}
+                    {d.label}: {d.count}
+                  </Badge>
+                </button>
               ))}
             </div>
+            {domainFilter && (
+              <button
+                type="button"
+                className="mt-2 text-caption text-ink-500 underline hover:text-ink-800"
+                onClick={() => {
+                  setDomainFilter(null);
+                  void load(null);
+                }}
+              >
+                Quitar filtro
+              </button>
+            )}
           </Card>
         </div>
       )}
+
+      <DomainConfigEditor
+        key={`${ws}/${proj}`}
+        ws={ws}
+        proj={proj}
+        initial={domainConfig}
+        onSaved={(config) => {
+          setDomainConfig(config);
+          void load();
+        }}
+      />
 
       {/* Repos vinculados */}
       <Card>
@@ -364,7 +424,14 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Commits */}
       <Card>
-        <h3 className="text-h4 text-ink-900">Commits recientes</h3>
+        <h3 className="text-h4 text-ink-900">
+          Commits recientes
+          {domainFilter ? (
+            <span className="ml-2 font-mono text-caption font-normal text-ink-400">
+              · filtro {domainFilter}
+            </span>
+          ) : null}
+        </h3>
         <div className="mt-4">
           {commits.length === 0 && syncing ? (
             <SkeletonList rows={5} />
@@ -372,9 +439,11 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
             <EmptyState
               title="Sin commits todavía"
               description={
-                repos.length === 0
-                  ? "Vincula un repositorio de GitHub para empezar a ver la actividad del equipo."
-                  : 'Pulsa "Sincronizar commits" para traer el historial con tu cuenta de GitHub.'
+                domainFilter
+                  ? "No hay commits en este dominio."
+                  : repos.length === 0
+                    ? "Vincula un repositorio de GitHub para empezar a ver la actividad del equipo."
+                    : 'Pulsa "Sincronizar commits" para traer el historial con tu cuenta de GitHub.'
               }
             />
           ) : (
@@ -382,7 +451,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
               {commits.map((c) => (
                 <div key={c.id} className="flex items-start gap-3 -mx-6 px-6 py-3 hover:bg-surface-50">
                   <Badge tone="neutral" mono>
-                    {c.domain}
+                    {domainBadge(c.domain)}
                   </Badge>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-body text-ink-900">{c.message.split("\n")[0]}</p>

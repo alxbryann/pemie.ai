@@ -4,6 +4,7 @@
 //   - sincronización vía API (histórico) -> backfillRepo / backfillProject
 // Toda operación se scopea por proyecto y verifica el rol del usuario.
 
+import { Prisma } from "@prisma/client";
 import { classifyCommit, DEFAULT_DOMAIN_CONFIG, type DomainConfig, type Role } from "@pemie/shared";
 import { prisma } from "../db.js";
 import { badRequest, conflict, forbidden, notFound } from "./errors.js";
@@ -427,6 +428,55 @@ export interface ListCommitsFilter {
   limit?: number;
   domain?: string;
   contributorId?: string;
+}
+
+/**
+ * Actualiza la DomainConfig del proyecto y reclasifica todos sus commits
+ * con la config nueva (member+). Devuelve la config persistida y cuántos
+ * commits cambiaron de dominio.
+ */
+export async function updateDomainConfig(userId: string, projectId: string, config: DomainConfig) {
+  await projectWithAccess(userId, projectId, "member");
+
+  const keys = config.categories.map((c) => c.key);
+  if (new Set(keys).size !== keys.length)
+    throw badRequest("Las keys de categoría deben ser únicas", "duplicate_keys");
+  if (!config.fallback.trim())
+    throw badRequest("El fallback no puede estar vacío", "empty_fallback");
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { domainConfig: config as unknown as Prisma.InputJsonValue },
+  });
+
+  const commits = await prisma.commit.findMany({
+    where: { projectId },
+    select: { id: true, message: true, domain: true },
+  });
+
+  const byDomain = new Map<string, string[]>();
+  for (const c of commits) {
+    const domain = classifyCommit(c.message, config);
+    if (domain === c.domain) continue;
+    const list = byDomain.get(domain) ?? [];
+    list.push(c.id);
+    byDomain.set(domain, list);
+  }
+
+  let reclassified = 0;
+  for (const [domain, ids] of byDomain) {
+    // Chunks por si el proyecto tiene muchos commits.
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const result = await prisma.commit.updateMany({
+        where: { id: { in: chunk } },
+        data: { domain },
+      });
+      reclassified += result.count;
+    }
+  }
+
+  return { config, reclassified };
 }
 
 /** Lista commits de un proyecto, más recientes primero (viewer+). */

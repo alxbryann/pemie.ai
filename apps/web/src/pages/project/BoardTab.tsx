@@ -33,6 +33,7 @@ import {
   Select,
   SkeletonBoard,
 } from "../../components/ui.js";
+import CardDetailModal from "./CardDetailModal.js";
 
 /** Columna que contiene la tarjeta, o el id de la propia columna si se soltó en un hueco vacío. */
 function findContainer(board: Board, id: string): string | undefined {
@@ -83,6 +84,18 @@ function CardBody({ card }: { card: CardData }) {
           </Badge>
         </p>
       )}
+      {card.assignee && (
+        <p className="mt-1.5 flex basis-full items-center gap-1.5 text-caption text-ink-500">
+          {card.assignee.avatarUrl ? (
+            <img
+              src={card.assignee.avatarUrl}
+              alt=""
+              className="h-4 w-4 rounded-full"
+            />
+          ) : null}
+          <span className="font-mono">{card.assignee.githubLogin}</span>
+        </p>
+      )}
     </>
   );
 }
@@ -102,10 +115,12 @@ function SortableCard({
   card,
   columns,
   onMoveViaSelect,
+  onOpen,
 }: {
   card: CardData;
   columns: Column[];
   onMoveViaSelect: (cardId: string, columnId: string) => void;
+  onOpen: (card: CardData) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
@@ -129,9 +144,13 @@ function SortableCard({
           <DragHandle />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
+          <button
+            type="button"
+            className="flex w-full flex-wrap items-start justify-between gap-2 rounded-sm text-left transition-colors hover:bg-surface-50"
+            onClick={() => onOpen(card)}
+          >
             <CardBody card={card} />
-          </div>
+          </button>
           <label className="mt-2 block">
             <span className="sr-only">Mover "{card.title}" a otra columna</span>
             <Select
@@ -156,10 +175,12 @@ function BoardColumn({
   column,
   columns,
   onMoveViaSelect,
+  onOpenCard,
 }: {
   column: Column;
   columns: Column[];
   onMoveViaSelect: (cardId: string, columnId: string) => void;
+  onOpenCard: (card: CardData) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
@@ -177,7 +198,13 @@ function BoardColumn({
       <SortableContext items={column.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
           {column.cards.map((card) => (
-            <SortableCard key={card.id} card={card} columns={columns} onMoveViaSelect={onMoveViaSelect} />
+            <SortableCard
+              key={card.id}
+              card={card}
+              columns={columns}
+              onMoveViaSelect={onMoveViaSelect}
+              onOpen={onOpenCard}
+            />
           ))}
           {column.cards.length === 0 && <EmptyState compact title="Sin tarjetas" />}
         </div>
@@ -194,6 +221,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   const [title, setTitle] = useState("");
   const [type, setType] = useState("task");
+  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -263,6 +291,26 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   function moveCardViaSelect(id: string, columnId: string) {
     void persistMove(id, columnId);
+  }
+
+  function applyCardUpdate(updated: CardData) {
+    setBoard((prev) => {
+      if (!prev) return prev;
+      // Si cambió de columna, recargar para respetar orden del servidor.
+      const current = prev.columns.flatMap((c) => c.cards).find((c) => c.id === updated.id);
+      if (!current || current.columnId !== updated.columnId) {
+        void load();
+        return prev;
+      }
+      return {
+        ...prev,
+        columns: prev.columns.map((col) => ({
+          ...col,
+          cards: col.cards.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
+        })),
+      };
+    });
+    setSelectedCard(null);
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -379,7 +427,13 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
           )}
           <div ref={scrollRef} className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 pr-1">
             {board.columns.map((col) => (
-              <BoardColumn key={col.id} column={col} columns={board.columns} onMoveViaSelect={moveCardViaSelect} />
+              <BoardColumn
+                key={col.id}
+                column={col}
+                columns={board.columns}
+                onMoveViaSelect={moveCardViaSelect}
+                onOpenCard={setSelectedCard}
+              />
             ))}
           </div>
           {canScrollRight && (
@@ -391,6 +445,17 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
         </div>
         <DragOverlay>{activeCard ? <CardPreview card={activeCard} /> : null}</DragOverlay>
       </DndContext>
+
+      {selectedCard && (
+        <CardDetailModal
+          card={selectedCard}
+          columns={board.columns}
+          ws={ws}
+          proj={proj}
+          onClose={() => setSelectedCard(null)}
+          onChanged={applyCardUpdate}
+        />
+      )}
     </div>
   );
 }

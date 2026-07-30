@@ -2,7 +2,7 @@
 // Reglas del sistema: radios sm/md/lg, borde hairline, sombra fría, acento azul único,
 // mono (IBM Plex) para etiquetas, comandos y métricas.
 
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -451,6 +451,57 @@ export function DangerZone({
         {children}
       </div>
     </section>
+  );
+}
+
+// Overlay centrado reutilizable (picker de repos, detalle de tarjeta, etc.).
+export function Modal({
+  title,
+  onClose,
+  children,
+  wide = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal
+        aria-label={title}
+        className={`max-h-[85vh] w-full overflow-hidden rounded-xl border border-line-200 bg-surface-0 shadow-lg ${
+          wide ? "max-w-2xl" : "max-w-lg"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-line-100 p-4">
+          <h3 className="text-h4 text-ink-900">{title}</h3>
+          <button
+            type="button"
+            className="text-body text-ink-400 transition-colors hover:text-ink-900"
+            onClick={onClose}
+          >
+            Cerrar
+          </button>
+        </div>
+        <div className="max-h-[calc(85vh-3.5rem)] overflow-y-auto p-4">{children}</div>
+      </div>
+    </div>
   );
 }
 

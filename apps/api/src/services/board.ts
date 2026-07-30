@@ -229,38 +229,117 @@ export async function opLinkStoryToCard(
   return updated;
 }
 
+const CARD_INCLUDE = {
+  userStory: { select: { id: true, key: true, title: true, status: true } },
+  assignee: { select: { id: true, githubLogin: true, name: true, avatarUrl: true } },
+} as const;
+
+async function validateCardAssignee(projectId: string, assigneeId: string) {
+  const contributor = await prisma.contributor.findUnique({ where: { id: assigneeId } });
+  if (!contributor || contributor.projectId !== projectId)
+    throw badRequest("El asignado no pertenece al proyecto", "assignee_mismatch");
+}
+
 export interface UpdateCardInput {
   title?: string;
   description?: string | null;
   type?: string;
   assigneeId?: string | null;
+  userStoryId?: string | null;
   labels?: unknown;
 }
 
-/** Actualiza campos de una tarjeta (member+). */
+/** Actualiza campos de una tarjeta (member+) y registra actividad relevante. */
 export async function updateCard(userId: string, cardId: string, patch: UpdateCardInput) {
   const card = await cardWithProject(cardId);
-  await projectWithAccess(userId, card.board.projectId, "member");
+  const projectId = card.board.projectId;
+  await projectWithAccess(userId, projectId, "member");
+  const actor: CardActor = { actorType: "user", actorId: userId };
 
   const data: Prisma.CardUpdateInput = {};
+  const activities: Array<{ action: string; from: string | null; to: string | null }> = [];
+
   if (patch.title !== undefined) {
     const t = patch.title.trim();
     if (t.length < 1) throw badRequest("El título está vacío", "empty_title");
-    data.title = t;
+    if (t !== card.title) {
+      data.title = t;
+      activities.push({ action: "updated", from: card.title, to: t });
+    }
   }
-  if (patch.description !== undefined) data.description = patch.description?.trim() || null;
+  if (patch.description !== undefined) {
+    const next = patch.description?.trim() || null;
+    if (next !== card.description) data.description = next;
+  }
   if (patch.type !== undefined) {
-    if (!CARD_TYPES.includes(patch.type as CardType)) throw badRequest(`Tipo inválido: ${patch.type}`, "invalid_type");
-    data.type = patch.type;
+    if (!CARD_TYPES.includes(patch.type as CardType))
+      throw badRequest(`Tipo inválido: ${patch.type}`, "invalid_type");
+    if (patch.type !== card.type) {
+      data.type = patch.type;
+      activities.push({ action: "updated", from: card.type, to: patch.type });
+    }
   }
   if (patch.assigneeId !== undefined) {
-    data.assignee = patch.assigneeId
-      ? { connect: { id: patch.assigneeId } }
-      : { disconnect: true };
+    if (patch.assigneeId) await validateCardAssignee(projectId, patch.assigneeId);
+    if (patch.assigneeId !== card.assigneeId) {
+      data.assignee = patch.assigneeId
+        ? { connect: { id: patch.assigneeId } }
+        : { disconnect: true };
+      activities.push({
+        action: "assigned",
+        from: card.assigneeId,
+        to: patch.assigneeId,
+      });
+    }
   }
   if (patch.labels !== undefined) data.labels = asJson(patch.labels);
 
-  return prisma.card.update({ where: { id: card.id }, data });
+  if (patch.userStoryId !== undefined && patch.userStoryId !== card.userStoryId) {
+    if (patch.userStoryId) {
+      const story = await prisma.userStory.findUnique({ where: { id: patch.userStoryId } });
+      if (!story || story.projectId !== projectId)
+        throw badRequest("La HU no pertenece al proyecto", "story_mismatch");
+      const existing = await prisma.card.findUnique({ where: { userStoryId: patch.userStoryId } });
+      if (existing && existing.id !== card.id)
+        throw badRequest("Esa HU ya tiene una tarjeta", "story_has_card");
+      data.userStory = { connect: { id: patch.userStoryId } };
+      activities.push({ action: "linked_story", from: card.userStoryId, to: patch.userStoryId });
+    } else {
+      data.userStory = { disconnect: true };
+      activities.push({ action: "unlinked_story", from: card.userStoryId, to: null });
+    }
+  }
+
+  if (Object.keys(data).length === 0) {
+    return prisma.card.findUniqueOrThrow({
+      where: { id: card.id },
+      include: CARD_INCLUDE,
+    });
+  }
+
+  const updated = await prisma.card.update({
+    where: { id: card.id },
+    data,
+    include: CARD_INCLUDE,
+  });
+
+  for (const a of activities) {
+    await recordActivity(card.id, actor, a.action, a.from, a.to);
+  }
+
+  return updated;
+}
+
+/** Actividad reciente de una tarjeta (viewer+). */
+export async function listCardActivities(userId: string, cardId: string, limit = 50) {
+  const card = await cardWithProject(cardId);
+  await projectWithAccess(userId, card.board.projectId);
+  const take = Math.min(Math.max(limit, 1), 100);
+  return prisma.cardActivity.findMany({
+    where: { cardId },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
 }
 
 /** Carga una tarjeta cruda por id (para que el transporte valide su proyecto). */
