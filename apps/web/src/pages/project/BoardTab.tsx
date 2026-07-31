@@ -21,7 +21,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, ApiError, type Board, type Card as CardData, type Column } from "../../lib/api.js";
+import { api, analyticsFailureReason, ApiError, type Board, type Card as CardData, type Column } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -279,17 +280,22 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     if (title.trim().length < 1) return;
     try {
       await api.board.createCard(ws, proj, { title: title.trim(), type });
+      track("board_card_created", { card_type: type });
       setTitle("");
       setType("task");
       await load();
     } catch (e) {
+      track("board_card_created_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear la tarjeta");
     }
   }
 
-  async function persistMove(cardId: string, columnId: string, order?: number) {
+  /** `fromColumn`: columna de origen (para el evento `board_card_moved`), no la persiste el backend. */
+  async function persistMove(cardId: string, columnId: string, order?: number, fromColumn?: string) {
     try {
       await api.board.moveCard(ws, proj, cardId, columnId, order);
+      if (fromColumn && fromColumn !== columnId)
+        track("board_card_moved", { from_column: fromColumn, to_column: columnId });
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo mover la tarjeta");
@@ -298,7 +304,8 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   function moveCardViaSelect(id: string, columnId: string) {
-    void persistMove(id, columnId);
+    const fromColumn = board?.columns.flatMap((c) => c.cards).find((c) => c.id === id)?.columnId;
+    void persistMove(id, columnId, undefined, fromColumn);
   }
 
   function applyCardUpdate(updated: CardData) {
@@ -349,6 +356,9 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   async function handleDragEnd(event: DragEndEvent) {
+    // `activeCard` se fija una sola vez en handleDragStart y handleDragOver no lo
+    // toca (solo muta `board`): su columnId sigue siendo la columna de origen real.
+    const fromColumn = activeCard?.columnId;
     setActiveCard(null);
     const { active, over } = event;
     if (!board) return;
@@ -382,7 +392,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       return { ...prev, columns };
     });
 
-    await persistMove(String(active.id), container, finalOrder);
+    await persistMove(String(active.id), container, finalOrder, fromColumn);
   }
 
   if (loading) return <SkeletonBoard />;

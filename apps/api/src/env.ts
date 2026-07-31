@@ -41,6 +41,12 @@ const schema = z.object({
   // cae a modo dev: usa un buzón de prueba (Ethereal) y loguea el preview.
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default("pemie.ai <onboarding@resend.dev>"),
+
+  // Analítica de producto (PEM-8, server-side: eventos telegram_*). Credencial
+  // separada de la del cliente (VITE_POSTHOG_KEY en apps/web) — sin key, el
+  // wrapper de servicios/analytics.ts es un no-op silencioso.
+  POSTHOG_API_KEY: z.string().optional(),
+  POSTHOG_HOST: z.string().default("https://us.i.posthog.com"),
 });
 
 const parsed = schema.parse(process.env);

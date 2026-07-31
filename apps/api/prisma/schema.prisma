@@ -17,14 +17,17 @@ datasource db {
 // ─── Auth & tenencia ──────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String? // null si solo entra por OAuth
-  name         String?
-  avatarUrl    String?
-  githubLogin  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String? // null si solo entra por OAuth
+  name             String?
+  avatarUrl        String?
+  githubLogin      String?
+  // Consentimiento de analítica de producto (PostHog). Un solo booleano no
+  // justifica una tabla aparte; ver PLANS/PEMIE_POSTHOG_UX_CONSENT_EVENT_MAP.md.
+  analyticsEnabled Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   accounts    Account[]
   sessions    Session[]

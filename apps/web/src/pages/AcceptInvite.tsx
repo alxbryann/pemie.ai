@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, ApiError, type InvitationDetail } from "../lib/api.js";
+import { api, analyticsFailureReason, ApiError, type InvitationDetail } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
+import { track } from "../lib/analytics/index.js";
 import { Button, ErrorText, Spinner } from "../components/ui.js";
 import { AuthShell } from "./Login.js";
 
@@ -27,8 +28,10 @@ export default function AcceptInvite() {
     setError(null);
     try {
       const { workspace } = await api.invitations.accept(token);
+      track("invite_accepted");
       navigate(`/w/${workspace.slug}`);
     } catch (err) {
+      track("invite_accepted_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo aceptar");
     } finally {
       setBusy(false);

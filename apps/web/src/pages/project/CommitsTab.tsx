@@ -9,6 +9,7 @@ import {
   type Stats,
   type SyncResult,
 } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -236,7 +237,11 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   function toggleDomainFilter(key: string) {
-    setDomainFilter((current) => (current === key ? null : key));
+    setDomainFilter((current) => {
+      const next = current === key ? null : key;
+      if (next) track("commits_filter_applied", { filter_type: "domain" });
+      return next;
+    });
   }
 
   function domainBadge(key: string) {
@@ -492,7 +497,11 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <Select
               value={domainFilter ?? ""}
-              onChange={(e) => setDomainFilter(e.target.value || null)}
+              onChange={(e) => {
+                const value = e.target.value || null;
+                setDomainFilter(value);
+                if (value) track("commits_filter_applied", { filter_type: "domain" });
+              }}
               aria-label="Filtrar por tipo"
             >
               <option value="">Todos los tipos</option>
@@ -505,7 +514,12 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
             </Select>
             <Select
               value={contributorFilter ?? ""}
-              onChange={(e) => setContributorFilter(e.target.value || null)}
+              onChange={(e) => {
+                const value = e.target.value || null;
+                setContributorFilter(value);
+                // Nunca el nombre del autor en texto libre — solo el hecho de filtrar.
+                if (value) track("commits_filter_applied", { filter_type: "author" });
+              }}
               aria-label="Filtrar por autor"
             >
               <option value="">Todos los autores</option>
@@ -519,7 +533,10 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
             </Select>
             <Select
               value={datePreset}
-              onChange={(e) => setDatePreset(e.target.value)}
+              onChange={(e) => {
+                setDatePreset(e.target.value);
+                if (e.target.value) track("commits_filter_applied", { filter_type: "date_preset" });
+              }}
               aria-label="Filtrar por fecha"
             >
               {DATE_PRESETS.map((p) => (
@@ -536,6 +553,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
                   setDomainFilter(null);
                   setContributorFilter(null);
                   setDatePreset("");
+                  track("commits_filter_cleared");
                 }}
               >
                 Limpiar filtros

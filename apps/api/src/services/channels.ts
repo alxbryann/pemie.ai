@@ -14,8 +14,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { encryptSecret } from "../lib/secrets.js";
-import { badRequest, forbidden, notFound } from "./errors.js";
+import { badRequest, forbidden, notFound, ServiceError } from "./errors.js";
 import * as agents from "./agents.js";
+import { trackServerEvent } from "./analytics.js";
 
 const LINK_TTL_MS = 15 * 60 * 1000;
 const PROVIDER = "telegram";
@@ -112,10 +113,22 @@ export async function getChannelStatus(userId: string) {
 /**
  * Crea un token one-shot para deep link t.me/Bot?start=<token>.
  * Al completar el link se asegura UserChannelConfig + user MCP key.
+ *
+ * `analyticsEnabled` viene explícito del `User` que rest/channels.ts ya cargó
+ * para autorizar la petición (nunca un fetch aparte); si es `false`,
+ * trackServerEvent es no-op silencioso.
  */
-export async function createLinkToken(userId: string, projectId?: string | null) {
-  if (!env.TELEGRAM_BOT_TOKEN?.trim())
+export async function createLinkToken(
+  userId: string,
+  analyticsEnabled: boolean,
+  projectId?: string | null
+) {
+  if (!env.TELEGRAM_BOT_TOKEN?.trim()) {
+    trackServerEvent(analyticsEnabled, userId, "telegram_link_started_failed", {
+      reason: "telegram_not_configured",
+    });
     throw badRequest("Telegram no está configurado en el servidor", "telegram_not_configured");
+  }
 
   if (projectId) {
     const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -141,6 +154,8 @@ export async function createLinkToken(userId: string, projectId?: string | null)
     ? `https://t.me/${botUsername}?start=${token}`
     : null;
 
+  trackServerEvent(analyticsEnabled, userId, "telegram_link_started");
+
   return {
     token: row.token,
     expiresAt: row.expiresAt,
@@ -159,7 +174,13 @@ export async function completeLinkFromToken(
   telegramUserId: string,
   telegramUsername?: string | null
 ) {
-  const row = await prisma.channelLinkToken.findUnique({ where: { token } });
+  // El link se completa fuera de la SPA (el bot habla directo con Telegram): se
+  // detecta acá, al procesar /start, y se incluye el User ya en la misma query
+  // para trackear `telegram_linked` sin un fetch aparte.
+  const row = await prisma.channelLinkToken.findUnique({
+    where: { token },
+    include: { user: { select: { analyticsEnabled: true } } },
+  });
   if (!row || row.usedAt) throw badRequest("Token de vínculo inválido o ya usado", "invalid_link_token");
   if (row.expiresAt.getTime() < Date.now())
     throw badRequest("Token de vínculo expirado; genera uno nuevo desde Pemie", "link_token_expired");
@@ -191,6 +212,7 @@ export async function completeLinkFromToken(
   });
 
   await ensureUserChannelConfig(userId, row.projectId);
+  trackServerEvent(row.user.analyticsEnabled, userId, "telegram_linked");
   return { userId, projectId: row.projectId };
 }
 
@@ -249,43 +271,53 @@ export async function ensureUserChannelConfig(userId: string, defaultProjectId?:
 /** Guarda / actualiza la LLM key del usuario (cifrada) y el proveedor activo. */
 export async function setLlmKey(
   userId: string,
+  analyticsEnabled: boolean,
   rawKey: string,
   opts?: { provider?: string; model?: string }
 ) {
-  const provider = parseLlmProvider(opts?.provider ?? "anthropic");
-  const trimmed = rawKey.trim();
-  validateLlmKey(provider, trimmed);
+  try {
+    const provider = parseLlmProvider(opts?.provider ?? "anthropic");
+    const trimmed = rawKey.trim();
+    validateLlmKey(provider, trimmed);
 
-  await ensureUserChannelConfig(userId);
-  const ciphertext = encryptSecret(trimmed);
-  const last4 = trimmed.slice(-4);
-  const requested = opts?.model?.trim();
-  // Un modelo fuera del catálogo se rechaza igual que en `setChannelModel`: caer
-  // al default en silencio dejaba al usuario creyendo que guardó otra cosa.
-  if (requested && !isAllowedModel(provider, requested)) {
-    throw badRequest(
-      `Modelo inválido para ${provider}. Usa: ${listModelsForProvider(provider).join(", ")}`,
-      "invalid_model"
-    );
+    await ensureUserChannelConfig(userId);
+    const ciphertext = encryptSecret(trimmed);
+    const last4 = trimmed.slice(-4);
+    const requested = opts?.model?.trim();
+    // Un modelo fuera del catálogo se rechaza igual que en `setChannelModel`: caer
+    // al default en silencio dejaba al usuario creyendo que guardó otra cosa.
+    if (requested && !isAllowedModel(provider, requested)) {
+      throw badRequest(
+        `Modelo inválido para ${provider}. Usa: ${listModelsForProvider(provider).join(", ")}`,
+        "invalid_model"
+      );
+    }
+    const model = requested || CHANNEL_LLM_DEFAULT_MODELS[provider];
+
+    await prisma.channelLlmCredential.upsert({
+      where: { userId_provider: { userId, provider } },
+      create: { userId, provider, llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
+      update: { llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
+    });
+
+    const config = await prisma.userChannelConfig.update({
+      where: { userId },
+      data: {
+        llmProvider: provider,
+        llmKeyCiphertext: ciphertext,
+        llmKeyLast4: last4,
+        model,
+        enabled: true,
+      },
+    });
+    // provider/model son metadata, no secretos: nunca el valor de la key.
+    trackServerEvent(analyticsEnabled, userId, "telegram_llm_key_set", { provider, model });
+    return config;
+  } catch (err) {
+    const reason = err instanceof ServiceError ? err.code ?? "unknown_error" : "unknown_error";
+    trackServerEvent(analyticsEnabled, userId, "telegram_llm_key_set_failed", { reason });
+    throw err;
   }
-  const model = requested || CHANNEL_LLM_DEFAULT_MODELS[provider];
-
-  await prisma.channelLlmCredential.upsert({
-    where: { userId_provider: { userId, provider } },
-    create: { userId, provider, llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
-    update: { llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
-  });
-
-  return prisma.userChannelConfig.update({
-    where: { userId },
-    data: {
-      llmProvider: provider,
-      llmKeyCiphertext: ciphertext,
-      llmKeyLast4: last4,
-      model,
-      enabled: true,
-    },
-  });
 }
 
 /**
@@ -448,7 +480,11 @@ export async function clearChannelMessages(userId: string) {
   });
 }
 
-export async function setDefaultProject(userId: string, projectId: string | null) {
+export async function setDefaultProject(
+  userId: string,
+  analyticsEnabled: boolean,
+  projectId: string | null
+) {
   await ensureUserChannelConfig(userId);
   if (projectId) {
     const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -458,14 +494,16 @@ export async function setDefaultProject(userId: string, projectId: string | null
     });
     if (!membership) throw forbidden("No eres miembro del workspace del proyecto");
   }
-  return prisma.userChannelConfig.update({
+  const config = await prisma.userChannelConfig.update({
     where: { userId },
     data: { defaultProjectId: projectId },
   });
+  trackServerEvent(analyticsEnabled, userId, "telegram_default_project_set");
+  return config;
 }
 
 /** Desvincula Telegram y desactiva el canal (no borra la user key MCP ni credentials). */
-export async function disconnectChannel(userId: string) {
+export async function disconnectChannel(userId: string, analyticsEnabled: boolean) {
   await prisma.channelLink.deleteMany({ where: { userId, provider: PROVIDER } });
   await clearChannelMessages(userId).catch(() => {});
   const config = await prisma.userChannelConfig.findUnique({ where: { userId } });
@@ -475,6 +513,7 @@ export async function disconnectChannel(userId: string) {
       data: { enabled: false },
     });
   }
+  trackServerEvent(analyticsEnabled, userId, "telegram_disconnected");
   return { ok: true };
 }
 
@@ -535,8 +574,11 @@ export async function markChannelUpdateProcessed(updateId: string) {
 
 /** Carga contexto completo del bot para un telegram user id. */
 export async function loadBotSession(telegramUserId: string) {
+  // Incluye analyticsEnabled en la misma query (no un fetch aparte): los comandos
+  // del bot que trackean (/proyecto, /desvincular) lo leen de acá.
   const link = await prisma.channelLink.findUnique({
     where: { provider_externalId: { provider: PROVIDER, externalId: telegramUserId } },
+    include: { user: { select: { analyticsEnabled: true } } },
   });
   if (!link) return null;
 

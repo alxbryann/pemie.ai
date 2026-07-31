@@ -1,6 +1,8 @@
 // Tipos y constantes compartidos entre el backend (apps/api) y el frontend (apps/web).
 // Mantener agnóstico de runtime: sin imports de Node ni del navegador.
 
+export * from "./analytics.js";
+
 export type Role = "owner" | "admin" | "member" | "viewer";
 
 export type ReportScope = "day" | "general";

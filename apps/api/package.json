@@ -23,6 +23,7 @@
     "dotenv": "^16",
     "hono": "^4",
     "nodemailer": "^9.0.3",
+    "posthog-node": "^5",
     "zod": "^3"
   },
   "devDependencies": {

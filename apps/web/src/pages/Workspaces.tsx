@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, ApiError, type WorkspaceSummary } from "../lib/api.js";
+import { api, analyticsFailureReason, ApiError, type WorkspaceSummary } from "../lib/api.js";
+import { track } from "../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -36,10 +37,12 @@ export default function Workspaces() {
     setError(null);
     try {
       await api.workspaces.create(name);
+      track("workspace_created");
       setName("");
       setCreating(false);
       await load();
     } catch (err) {
+      track("workspace_created_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo crear");
     } finally {
       setBusy(false);

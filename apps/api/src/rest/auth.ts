@@ -41,6 +41,9 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+const analyticsPreferenceSchema = z.object({
+  analyticsEnabled: z.boolean(),
+});
 
 export function authRoutes() {
   const app = new Hono<AppEnv>();
@@ -71,6 +74,14 @@ export function authRoutes() {
   app.get("/me", (c) => {
     const user = c.get("user");
     return c.json({ user: user ? auth.toPublicUser(user) : null });
+  });
+
+  app.patch("/me/analytics-preference", async (c) => {
+    const user = requireUser(c);
+    const body = analyticsPreferenceSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) throw badRequest("Preferencia inválida", "invalid_body");
+    const updated = await auth.updateAnalyticsPreference(user.id, body.data.analyticsEnabled);
+    return c.json({ user: updated });
   });
 
   // ─── GitHub OAuth ──────────────────────────────────────────────────
@@ -119,7 +130,9 @@ export function authRoutes() {
       const profile = await fetchProfile(accessToken);
       const { token, expiresAt } = await auth.loginWithGithub({ ...profile, accessToken });
       setSessionCookie(c, token, expiresAt);
-      return c.redirect(`${front}${next}`);
+      // Marca de un solo uso: App.tsx la lee para disparar `user_logged_in` (este
+      // flujo nunca pasa por el submit de Login.tsx) y la limpia de la URL.
+      return c.redirect(`${front}${next}${next.includes("?") ? "&" : "?"}oauth=github`);
     } catch (err) {
       console.error("GitHub OAuth callback error:", err);
       return c.redirect(`${front}/login?error=oauth_failed`);

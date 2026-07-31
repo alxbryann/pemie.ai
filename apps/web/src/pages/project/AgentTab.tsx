@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, ApiError, API_BASE, type Agent, type AuditLog } from "../../lib/api.js";
+import { api, analyticsFailureReason, ApiError, API_BASE, type Agent, type AuditLog } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -53,9 +54,11 @@ export default function AgentTab({ ws, proj }: { ws: string; proj: string }) {
     setError(null);
     try {
       await api.agents.create(ws, proj, agentName.trim());
+      track("agent_registered");
       setAgentName("");
       await load();
     } catch (e) {
+      track("agent_registered_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear el agente");
     } finally {
       setCreating(false);

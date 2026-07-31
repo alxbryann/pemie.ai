@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, type Epic, type UserStory } from "../../lib/api.js";
+import { api, analyticsFailureReason, ApiError, type Epic, type UserStory } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   type BadgeTone,
@@ -77,6 +78,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
         narrative:
           role || want || benefit ? { role, want, benefit } : undefined,
       });
+      track("story_created");
       setTitle("");
       setRole("");
       setWant("");
@@ -84,13 +86,20 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
       setPriority("medium");
       await load();
     } catch (e) {
+      track("story_created_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear la HU");
     }
   }
 
   async function setStatus(id: string, status: string) {
+    const from = stories.find((s) => s.id === id)?.status;
     setStories((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
-    await api.stories.update(ws, proj, id, { status }).catch(() => load());
+    await api.stories
+      .update(ws, proj, id, { status })
+      .then(() => {
+        if (from && from !== status) track("story_status_changed", { from_status: from, to_status: status });
+      })
+      .catch(() => load());
   }
 
   async function confirmDelete() {
@@ -99,9 +108,11 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
     setDeleteError(null);
     try {
       await api.stories.remove(ws, proj, pendingDelete.id);
+      track("story_deleted");
       setPendingDelete(null);
       await load();
     } catch (e) {
+      track("story_delete_failed", { reason: analyticsFailureReason(e) });
       setDeleteError(e instanceof ApiError ? e.message : "No se pudo eliminar la HU");
     } finally {
       setDeleting(false);

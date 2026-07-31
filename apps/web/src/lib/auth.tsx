@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type User } from "./api.js";
+import { applyAnalyticsConsent, identifyUser, resetAnalytics, track } from "./analytics/index.js";
 
 interface AuthState {
   user: User | null;
@@ -11,6 +12,7 @@ interface AuthState {
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  setAnalyticsPreference: (enabled: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -19,13 +21,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Único punto donde el estado de sesión pasa a "hay usuario": aplica identify()
+  // + el consentimiento hidratado ahí mismo, en vez de repetirlo en cada caller
+  // (login/register/refresh comparten el mismo tránsito de estado).
+  function applyUser(next: User | null) {
+    setUser(next);
+    if (next) {
+      identifyUser(next);
+      applyAnalyticsConsent(next.analyticsEnabled);
+    }
+  }
+
   async function refresh() {
     const { user } = await api.auth.me();
-    setUser(user);
+    applyUser(user);
   }
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value: AuthState = {
@@ -34,15 +48,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh,
     login: async (email, password) => {
       const { user } = await api.auth.login({ email, password });
-      setUser(user);
+      applyUser(user);
     },
     register: async (email, password, name) => {
       const { user } = await api.auth.register({ email, password, name });
-      setUser(user);
+      applyUser(user);
     },
     logout: async () => {
       await api.auth.logout();
+      track("user_logged_out"); // antes del reset: todavía identificado como el usuario que sale
+      resetAnalytics();
       setUser(null);
+    },
+    setAnalyticsPreference: async (enabled) => {
+      const { user } = await api.auth.updateAnalyticsPreference(enabled);
+      applyAnalyticsConsent(enabled); // efecto inmediato en cliente, sin esperar el próximo refresh
+      setUser(user);
     },
   };
 

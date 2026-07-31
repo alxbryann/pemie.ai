@@ -259,7 +259,7 @@ async function dispatchMessage({
   }
 
   if (text.startsWith("/desvincular")) {
-    await channels.disconnectChannel(session.link.userId);
+    await channels.disconnectChannel(session.link.userId, session.link.user.analyticsEnabled);
     await tgSend(chatId, "Desvinculado. Ya no responderé hasta que vuelvas a conectar.");
     return;
   }
@@ -358,7 +358,7 @@ async function dispatchMessage({
       );
       return;
     }
-    await channels.setDefaultProject(session.link.userId, match.id);
+    await channels.setDefaultProject(session.link.userId, session.link.user.analyticsEnabled, match.id);
     await tgSend(chatId, `Proyecto por defecto: ${match.slug} (${match.id})`);
     return;
   }
