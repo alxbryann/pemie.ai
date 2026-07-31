@@ -453,6 +453,8 @@ export const api = {
       post<{ userStory: UserStory }>(`${pp(w, p)}/user-stories`, input),
     update: (w: string, p: string, id: string, patchBody: Partial<UserStory>) =>
       patch<{ userStory: UserStory }>(`${pp(w, p)}/user-stories/${id}`, patchBody),
+    remove: (w: string, p: string, id: string) =>
+      del<{ ok: true }>(`${pp(w, p)}/user-stories/${id}`),
   },
   contributors: {
     list: (w: string, p: string) => get<{ contributors: Contributor[] }>(`${pp(w, p)}/contributors`),

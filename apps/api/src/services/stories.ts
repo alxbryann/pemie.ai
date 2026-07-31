@@ -249,6 +249,19 @@ export async function opUpdateStory(
 }
 
 /**
+ * Elimina una HU (member+). Si tiene una Card vinculada en el Kanban, la FK
+ * `cards.userStoryId` es `ON DELETE SET NULL` (migration.sql) — la DB
+ * desvincula la tarjeta sola, no hace falta borrarla ni tocarla aquí.
+ */
+export async function deleteStory(userId: string, storyId: string) {
+  const story = await getStoryById(storyId);
+  if (!story) throw notFound("HU no encontrada");
+  await projectWithAccess(userId, story.projectId, "member");
+  await prisma.userStory.delete({ where: { id: story.id } });
+  return { ok: true };
+}
+
+/**
  * Operación (ya autorizada): asigna (o desasigna, si `assigneeId` es null) una
  * HU a un contributor del proyecto. Si la HU tiene una Card vinculada, sincroniza
  * su assigneeId y registra la actividad en CardActivity.

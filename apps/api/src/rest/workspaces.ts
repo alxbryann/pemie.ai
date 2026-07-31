@@ -494,6 +494,12 @@ export function workspaceRoutes() {
     return c.json({ userStory: await stories.updateStory(user.id, c.req.param("storyId"), body.data) });
   });
 
+  app.delete("/:slug/projects/:projectSlug/user-stories/:storyId", async (c) => {
+    const user = requireUser(c);
+    await resolveProject(c);
+    return c.json(await stories.deleteStory(user.id, c.req.param("storyId")));
+  });
+
   // ─── F6: Kanban ────────────────────────────────────────────────────
   app.get("/:slug/projects/:projectSlug/board", async (c) => {
     const user = requireUser(c);

@@ -591,6 +591,29 @@ export function DragHandle({ className = "" }: { className?: string }) {
   );
 }
 
+export function TrashIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M2.5 4h11" />
+      <path d="M5.5 4V2.75A.75.75 0 0 1 6.25 2h3.5a.75.75 0 0 1 .75.75V4" />
+      <path d="M4 4l.6 8.4A1.5 1.5 0 0 0 6.1 13.8h3.8a1.5 1.5 0 0 0 1.5-1.4L12 4" />
+      <path d="M6.5 7v4" />
+      <path d="M9.5 7v4" />
+    </svg>
+  );
+}
+
 export function Spinner() {
   return (
     <div className="grid min-h-[40vh] place-items-center">
