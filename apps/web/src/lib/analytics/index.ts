@@ -22,17 +22,32 @@ let initialized = false;
 export function initAnalytics(): void {
   if (initialized) return;
   const key = import.meta.env.VITE_POSTHOG_KEY?.trim();
-  if (!key) return; // sin credencial: la app funciona igual, solo sin analítica
+  const host = import.meta.env.VITE_POSTHOG_HOST?.trim();
+  if (!key) {
+    if (import.meta.env.DEV) {
+      throw new Error(
+        "VITE_POSTHOG_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_POSTHOG_KEY is configured"
+      );
+    }
+    return;
+  }
+  if (!host) {
+    if (import.meta.env.DEV) {
+      throw new Error(
+        "VITE_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_POSTHOG_HOST is configured"
+      );
+    }
+    return;
+  }
   initialized = true;
   posthog.init(key, {
-    api_host: import.meta.env.VITE_POSTHOG_HOST?.trim() || "https://us.i.posthog.com",
+    api_host: host,
+    capture_exceptions: {
+      capture_unhandled_errors: true,
+      capture_unhandled_rejections: true,
+      capture_console_errors: false,
+    },
     person_profiles: "identified_only",
-    autocapture: false, // solo eventos declarados en el catálogo, nada implícito
-    disable_session_recording: true, // excluido del MVP
-    advanced_disable_feature_flags: true, // excluido del MVP
-    // Estado seguro hasta que se conozca el usuario real: AuthProvider llama
-    // applyAnalyticsConsent() apenas resuelve /me (o se queda opt-out si no hay sesión).
-    opt_out_capturing_by_default: true,
   });
 }
 
