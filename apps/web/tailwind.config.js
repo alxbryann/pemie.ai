@@ -5,6 +5,13 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // Pasos intermedios que faltan en la escala default de Tailwind (solo trae
+      // .5/1.5/2.5/3.5): la landing los usa para calzar el spacing del mockup
+      // original sin caer en px sueltos.
+      spacing: {
+        "4.5": "1.125rem",
+        "5.5": "1.375rem",
+      },
       colors: {
         ink: {
           900: "var(--ink-900)",

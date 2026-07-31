@@ -19,7 +19,7 @@ export function TerminalDemo() {
   const { typed, lines } = useTerminalPlayback(script);
 
   return (
-    <div className="w-full max-w-[860px] overflow-hidden rounded-lg bg-surface-ink shadow-lg">
+    <div className="mx-auto w-full max-w-[860px] overflow-hidden rounded-lg bg-surface-ink shadow-lg">
       <div className="flex items-center gap-2 border-b border-line-onink px-4.5 py-3.5">
         <span className="h-2.5 w-2.5 rounded-pill bg-[#ff5f57]" />
         <span className="h-2.5 w-2.5 rounded-pill bg-[#febc2e]" />
