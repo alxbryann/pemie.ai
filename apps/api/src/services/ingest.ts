@@ -5,6 +5,7 @@
 // Toda operación se scopea por proyecto y verifica el rol del usuario.
 
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { classifyCommit, DEFAULT_DOMAIN_CONFIG, type DomainConfig, type Role } from "@pemie/shared";
 import { prisma } from "../db.js";
 import { badRequest, conflict, forbidden, notFound } from "./errors.js";
@@ -428,6 +429,26 @@ export interface ListCommitsFilter {
   limit?: number;
   domain?: string;
   contributorId?: string;
+  since?: Date;
+  until?: Date;
+}
+
+const commitFiltersSchema = z.object({
+  domain: z.string().min(1).optional().catch(undefined),
+  contributorId: z.string().min(1).optional().catch(undefined),
+  limit: z.coerce.number().int().positive().optional().catch(undefined),
+  since: z.coerce.date().optional().catch(undefined),
+  until: z.coerce.date().optional().catch(undefined),
+});
+
+/**
+ * Parsea filtros de listado de commits desde query params REST (strings) o
+ * argumentos MCP (JSON tipado) — mismo parser para ambas interfaces, así
+ * quedan en paridad. Entradas inválidas se ignoran (quedan `undefined`) en
+ * vez de rechazar la request completa.
+ */
+export function parseCommitFilters(raw: Record<string, unknown>): ListCommitsFilter {
+  return commitFiltersSchema.parse(raw);
 }
 
 /**
@@ -493,6 +514,14 @@ export function opListCommits(projectId: string, filter: ListCommitsFilter = {})
       projectId,
       ...(filter.domain ? { domain: filter.domain } : {}),
       ...(filter.contributorId ? { contributorId: filter.contributorId } : {}),
+      ...(filter.since || filter.until
+        ? {
+            committedAt: {
+              ...(filter.since ? { gte: filter.since } : {}),
+              ...(filter.until ? { lt: filter.until } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: { committedAt: "desc" },
     take,

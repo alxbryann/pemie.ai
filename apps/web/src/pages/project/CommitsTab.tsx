@@ -17,6 +17,7 @@ import {
   ErrorText,
   Input,
   Notice,
+  Select,
   Skeleton,
   SkeletonStats,
   SkeletonList,
@@ -24,12 +25,27 @@ import {
 } from "../../components/ui.js";
 import DomainConfigEditor from "./DomainConfigEditor.js";
 
+const DATE_PRESETS = [
+  { value: "", label: "Todo" },
+  { value: "7", label: "Últimos 7 días" },
+  { value: "30", label: "Últimos 30 días" },
+  { value: "90", label: "Últimos 90 días" },
+];
+
+function presetToSince(preset: string): string | undefined {
+  if (!preset) return undefined;
+  const days = Number(preset);
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(null);
   const [domainFilter, setDomainFilter] = useState<string | null>(null);
+  const [contributorFilter, setContributorFilter] = useState<string | null>(null);
+  const [datePreset, setDatePreset] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,20 +67,16 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
     return map;
   }, [resolvedConfig]);
 
-  async function load(filter: string | null = domainFilter) {
+  /** Repos, stats y config de dominio — no depende de los filtros de commits. */
+  async function load() {
     setError(null);
     try {
-      const [r, c, s, p] = await Promise.all([
+      const [r, s, p] = await Promise.all([
         api.repos.list(ws, proj),
-        api.commits.list(ws, proj, {
-          limit: 50,
-          ...(filter ? { domain: filter } : {}),
-        }),
         api.stats.get(ws, proj),
         api.projects.get(ws, proj),
       ]);
       setRepos(r.repos);
-      setCommits(c.commits);
       setStats(s.stats);
       setDomainConfig(p.project.domainConfig);
     } catch (e) {
@@ -73,20 +85,72 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       setLoading(false);
     }
   }
+
+  // Contador de request: si el usuario cambia de filtro rápido, descarta
+  // cualquier respuesta que no sea la del último pedido en vuelo.
+  const commitsRequestId = useRef(0);
+  /**
+   * Lista de commits — separado de `load()` porque cambia con cada filtro sin
+   * necesidad de re-pedir repos/stats. Acepta overrides explícitos para el
+   * primer fetch en el efecto de montaje/cambio de proyecto: en ese momento
+   * el estado de los filtros todavía no reflejó el reset (closure viejo), así
+   * que no se puede confiar en leerlo directamente.
+   */
+  async function loadCommits(
+    domain: string | null = domainFilter,
+    contributorId: string | null = contributorFilter,
+    preset: string = datePreset
+  ) {
+    const requestId = ++commitsRequestId.current;
+    const since = presetToSince(preset);
+    try {
+      const { commits: c } = await api.commits.list(ws, proj, {
+        limit: 50,
+        ...(domain ? { domain } : {}),
+        ...(contributorId ? { contributorId } : {}),
+        ...(since ? { since } : {}),
+      });
+      if (requestId !== commitsRequestId.current) return; // respuesta obsoleta
+      setCommits(c);
+    } catch (e) {
+      if (requestId !== commitsRequestId.current) return;
+      setError(e instanceof ApiError ? e.message : "Error cargando los commits");
+    }
+  }
+
   // Abrir la pestaña sincroniza sola: primero se pinta lo que ya hay (rápido) y
   // en segundo plano se trae lo nuevo de GitHub. `autoSynced` evita repetirlo
   // en el doble montaje de StrictMode y al volver de un re-render.
   const autoSynced = useRef<string | null>(null);
+  // Se arma en `false` cada vez que este efecto corre para que el efecto de
+  // filtros (abajo) ignore el re-disparo que provoca el reset de filtros al
+  // cambiar de proyecto — si no, se dispararía loadCommits() dos veces.
+  const skipNextFiltersFetch = useRef(true);
   useEffect(() => {
     const key = `${ws}/${proj}`;
+    skipNextFiltersFetch.current = true;
     setDomainFilter(null);
-    load(null).then(() => {
+    setContributorFilter(null);
+    setDatePreset("");
+    load();
+    loadCommits(null, null, "").then(() => {
       if (autoSynced.current === key) return;
       autoSynced.current = key;
       autoSync();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, proj]);
+
+  // Refetch de commits cuando cambia cualquier filtro (no en el primer
+  // disparo tras un reset de filtros — ese ya lo hace el efecto de arriba).
+  useEffect(() => {
+    if (skipNextFiltersFetch.current) {
+      skipNextFiltersFetch.current = false;
+      return;
+    }
+    void loadCommits();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainFilter, contributorFilter, datePreset]);
 
   /**
    * Sincronización silenciosa al entrar: solo molesta si trajo algo o si falló.
@@ -98,7 +162,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       const result = await api.repos.syncAll(ws, proj, "auto");
       if (result.ingested > 0 || result.failed.length > 0) {
         setSyncResult(result);
-        await load();
+        await Promise.all([load(), loadCommits()]);
       }
     } catch {
       // Silencioso a propósito: la vista ya tiene datos y el usuario no pidió
@@ -115,7 +179,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
     try {
       const result = await api.repos.syncAll(ws, proj);
       setSyncResult(result);
-      await load();
+      await Promise.all([load(), loadCommits()]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo sincronizar con GitHub");
     } finally {
@@ -156,7 +220,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
         ingested,
         failed: syncError ? [{ repo: r.fullName, error: syncError }] : [],
       });
-      await load();
+      await Promise.all([load(), loadCommits()]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo vincular el repo");
     } finally {
@@ -165,13 +229,14 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   async function unlink(id: string) {
-    await api.repos.unlink(ws, proj, id).then(() => load()).catch(() => {});
+    await api.repos
+      .unlink(ws, proj, id)
+      .then(() => Promise.all([load(), loadCommits()]))
+      .catch(() => {});
   }
 
   function toggleDomainFilter(key: string) {
-    const next = domainFilter === key ? null : key;
-    setDomainFilter(next);
-    void load(next);
+    setDomainFilter((current) => (current === key ? null : key));
   }
 
   function domainBadge(key: string) {
@@ -261,10 +326,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
               <button
                 type="button"
                 className="mt-2 text-caption text-ink-500 underline hover:text-ink-800"
-                onClick={() => {
-                  setDomainFilter(null);
-                  void load(null);
-                }}
+                onClick={() => setDomainFilter(null)}
               >
                 Quitar filtro
               </button>
@@ -281,6 +343,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
         onSaved={(config) => {
           setDomainConfig(config);
           void load();
+          void loadCommits();
         }}
       />
 
@@ -424,14 +487,62 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Commits */}
       <Card>
-        <h3 className="text-h4 text-ink-900">
-          Commits recientes
-          {domainFilter ? (
-            <span className="ml-2 font-mono text-caption font-normal text-ink-400">
-              · filtro {domainFilter}
-            </span>
-          ) : null}
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-h4 text-ink-900">Commits recientes</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={domainFilter ?? ""}
+              onChange={(e) => setDomainFilter(e.target.value || null)}
+              aria-label="Filtrar por tipo"
+            >
+              <option value="">Todos los tipos</option>
+              {(stats?.byDomain ?? []).map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.emoji ? `${d.emoji} ` : ""}
+                  {d.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={contributorFilter ?? ""}
+              onChange={(e) => setContributorFilter(e.target.value || null)}
+              aria-label="Filtrar por autor"
+            >
+              <option value="">Todos los autores</option>
+              {(stats?.byContributor ?? [])
+                .filter((c) => c.contributor)
+                .map((c) => (
+                  <option key={c.contributor!.id} value={c.contributor!.id}>
+                    {c.contributor!.name || c.contributor!.githubLogin}
+                  </option>
+                ))}
+            </Select>
+            <Select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value)}
+              aria-label="Filtrar por fecha"
+            >
+              {DATE_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+            {(domainFilter || contributorFilter || datePreset) && (
+              <button
+                type="button"
+                className="text-caption text-ink-500 underline hover:text-ink-800"
+                onClick={() => {
+                  setDomainFilter(null);
+                  setContributorFilter(null);
+                  setDatePreset("");
+                }}
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
         <div className="mt-4">
           {commits.length === 0 && syncing ? (
             <SkeletonList rows={5} />
@@ -439,8 +550,8 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
             <EmptyState
               title="Sin commits todavía"
               description={
-                domainFilter
-                  ? "No hay commits en este dominio."
+                domainFilter || contributorFilter || datePreset
+                  ? "No hay commits que coincidan con estos filtros."
                   : repos.length === 0
                     ? "Vincula un repositorio de GitHub para empezar a ver la actividad del equipo."
                     : 'Pulsa "Sincronizar commits" para traer el historial con tu cuenta de GitHub.'

@@ -280,12 +280,11 @@ export function workspaceRoutes() {
   app.get("/:slug/projects/:projectSlug/commits", async (c) => {
     const user = requireUser(c);
     const project = await resolveProject(c);
-    const limit = Number(c.req.query("limit")) || undefined;
-    const commits = await ingest.listCommits(user.id, project.id, {
-      limit,
-      domain: c.req.query("domain"),
-      contributorId: c.req.query("contributorId"),
-    });
+    const commits = await ingest.listCommits(
+      user.id,
+      project.id,
+      ingest.parseCommitFilters(c.req.query())
+    );
     return c.json({ commits });
   });
 

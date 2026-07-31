@@ -111,20 +111,23 @@ const TOOLS: McpTool[] = [
   },
   {
     name: "list_commits",
-    description: "Lista commits del proyecto (filtrable por dominio o contribuidor).",
+    description:
+      "Lista commits del proyecto (filtrable por dominio, contribuidor y rango de fecha).",
     scope: "commits:read",
     inputSchema: withProjectId({
       limit: { type: "number" },
       domain: { type: "string" },
       contributorId: { type: "string" },
+      since: { type: "string", description: "ISO 8601 — commits desde esta fecha (inclusive)." },
+      until: {
+        type: "string",
+        description:
+          "ISO 8601 — commits antes de esta fecha (exclusive). Para 'hasta el día X inclusive', pasa la medianoche UTC del día siguiente a X.",
+      },
     }),
     handler: async (ctx, args) => {
       const projectId = await requireProject(ctx, args, "commits:read");
-      return ingest.opListCommits(projectId, {
-        limit: typeof args.limit === "number" ? args.limit : undefined,
-        domain: typeof args.domain === "string" ? args.domain : undefined,
-        contributorId: typeof args.contributorId === "string" ? args.contributorId : undefined,
-      });
+      return ingest.opListCommits(projectId, ingest.parseCommitFilters(args));
     },
   },
   {

@@ -410,8 +410,11 @@ export const api = {
       post<SyncResult>(`${pp(w, p)}/repos/sync${mode === "auto" ? "?mode=auto" : ""}`),
   },
   commits: {
-    list: (w: string, p: string, q?: { domain?: string; limit?: number }) =>
-      get<{ commits: Commit[] }>(`${pp(w, p)}/commits${qs(q)}`),
+    list: (
+      w: string,
+      p: string,
+      q?: { domain?: string; contributorId?: string; limit?: number; since?: string }
+    ) => get<{ commits: Commit[] }>(`${pp(w, p)}/commits${qs(q)}`),
   },
   stats: {
     get: (w: string, p: string) => get<{ stats: Stats }>(`${pp(w, p)}/stats`),
