@@ -12,6 +12,7 @@
   --fw-extrabold: 800;
 
   /* Type scale (px) */
+  --fs-hero:     clamp(64px, 13vw, 148px); /* wordmark hero de landing */
   --fs-display:  56px; /* hero */
   --fs-h1:       42px;
   --fs-h2:       32px;
@@ -30,6 +31,7 @@
   --lh-body: 1.55;
 
   /* Letter spacing */
+  --ls-hero: -0.05em;    /* wordmark hero de landing */
   --ls-tight: -0.03em;   /* big display */
   --ls-heading: -0.02em;
   --ls-normal: 0;

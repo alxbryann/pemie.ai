@@ -75,9 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * de esta app, nunca URLs absolutas (evita redirigir a un dominio ajeno).
  */
 export function safeNextPath(raw: string | null | undefined): string {
-  if (!raw) return "/";
+  if (!raw) return "/app";
   const path = raw.trim();
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/";
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/app";
   return path;
 }
 

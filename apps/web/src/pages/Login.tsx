@@ -65,7 +65,7 @@ export default function Login() {
       <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿No tienes cuenta?{" "}
         <Link
-          to={next === "/" ? "/register" : `/register?next=${encodeURIComponent(next)}`}
+          to={next === "/app" ? "/register" : `/register?next=${encodeURIComponent(next)}`}
           className="font-medium text-blue-600 hover:underline"
         >
           Regístrate

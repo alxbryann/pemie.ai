@@ -15,7 +15,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Único lugar del sistema donde se usa transparencia + blur. */}
       <header className="sticky top-0 z-50 border-b border-line-200 bg-white/[0.82] backdrop-blur-xl">
         <div className="mx-auto flex max-w-container items-center gap-3 px-4 py-3.5 sm:px-8">
-          <Link to="/" className="flex items-center gap-2.5">
+          <Link to="/app" className="flex items-center gap-2.5">
             <LogoMark size={26} />
             <Wordmark />
           </Link>

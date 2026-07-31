@@ -65,7 +65,7 @@ export default function Workspace() {
 
   return (
     <div>
-      <Link to="/" className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">
+      <Link to="/app" className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">
         ← workspaces
       </Link>
       <PageHeader
@@ -287,7 +287,7 @@ function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws)
       await api.workspaces.remove(ws.slug);
       track("workspace_deleted");
       // La ruta actual deja de existir: se vuelve a la lista sin dejarla en el historial.
-      navigate("/", { replace: true });
+      navigate("/app", { replace: true });
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : "No se pudo eliminar el workspace");
       setDeleting(false);
