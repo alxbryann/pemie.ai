@@ -73,6 +73,7 @@ export default function Workspace() {
 
       <div className="space-y-8">
         <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
+        <AgentsSection slug={slug} />
         <TeamSection slug={slug} canManage={canManage} />
         {/* `key` por workspace: al cambiar de workspace se descarta el borrador de
             nombre y el texto de confirmación del anterior. */}
@@ -110,6 +111,26 @@ function WorkspaceSkeleton() {
         </section>
       </div>
     </div>
+  );
+}
+
+function AgentsSection({ slug }: { slug: string }) {
+  const navigate = useNavigate();
+  return (
+    <section>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-h3 text-ink-900">Agentes</h2>
+        <Button variant="secondary" size="sm" onClick={() => navigate(`/w/${slug}/agents`)}>
+          Abrir hub
+        </Button>
+      </div>
+      <Card>
+        <p className="text-body-sm text-ink-600">
+          MCP, API keys, canal Telegram y el audit de lo que hacen los agentes en este
+          workspace.
+        </p>
+      </Card>
+    </section>
   );
 }
 

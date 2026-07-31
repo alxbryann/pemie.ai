@@ -266,6 +266,12 @@ export interface Agent {
   createdAt: string;
   _count: { apiKeys: number };
 }
+
+/** Agente con proyecto (listado a nivel workspace). */
+export interface WorkspaceAgent extends Agent {
+  projectId: string;
+  project: { id: string; name: string; slug: string; key: string };
+}
 export interface ApiKeyPublic {
   id: string;
   name: string;
@@ -473,6 +479,8 @@ export const api = {
   // ─── F4: agentes / API keys / audit ────────────────────────────────
   agents: {
     list: (w: string, p: string) => get<{ agents: Agent[] }>(`${pp(w, p)}/agents`),
+    listWorkspace: (w: string) =>
+      get<{ agents: WorkspaceAgent[] }>(`/api/workspaces/${w}/agents`),
     create: (w: string, p: string, name: string) =>
       post<{ agent: Agent }>(`${pp(w, p)}/agents`, { name }),
   },

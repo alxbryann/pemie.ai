@@ -7,6 +7,7 @@ import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
 import Workspaces from "./pages/Workspaces.js";
 import Workspace from "./pages/Workspace.js";
+import WorkspaceAgents from "./pages/workspace/Agents.js";
 import Project from "./pages/Project.js";
 import AcceptInvite from "./pages/AcceptInvite.js";
 
@@ -22,6 +23,7 @@ export default function App() {
 
       <Route path="/" element={<Protected><Workspaces /></Protected>} />
       <Route path="/w/:slug" element={<Protected><Workspace /></Protected>} />
+      <Route path="/w/:slug/agents" element={<Protected><WorkspaceAgents /></Protected>} />
       <Route path="/w/:slug/p/:projectSlug" element={<Protected><Project /></Protected>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
