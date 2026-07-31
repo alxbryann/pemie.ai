@@ -117,6 +117,38 @@ export function Switch({
   );
 }
 
+/**
+ * Chip de selección tipo checkbox (scopes, tags…). El checkbox real queda
+ * `sr-only` y el pill visual vive en un `<span>` hermano marcado vía `peer`:
+ * así el foco de teclado (`peer-focus-visible:shadow-focus`) es visible aunque
+ * el input esté oculto — un `<label>` no puede ser objetivo de `peer-*` de su
+ * propio hijo, por eso el estilo no vive directamente en el `<label>`.
+ */
+export function ToggleChip({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="inline-flex cursor-pointer">
+      <input type="checkbox" className="peer sr-only" checked={checked} onChange={onChange} />
+      <span
+        className={`rounded-pill border px-2.5 py-1 font-mono text-caption font-medium transition-colors peer-focus-visible:shadow-focus peer-focus-visible:outline-none ${
+          checked
+            ? "border-blue-600 bg-blue-100 text-blue-700"
+            : "border-line-200 bg-surface-100 text-ink-600 hover:border-ink-300"
+        }`}
+      >
+        {children}
+      </span>
+    </label>
+  );
+}
+
 /* --------------------------------- display -------------------------------- */
 
 const CARD_PADDING = { sm: "p-3", md: "p-6", none: "" };
@@ -156,7 +188,7 @@ export type NoticeTone = "success" | "warning" | "danger" | "info";
 
 const NOTICE_TONES: Record<NoticeTone, string> = {
   success: "border-green-200 bg-green-50 text-[#0d7a51]",
-  warning: "border-amber-200 bg-amber-50 text-[#8a5e0a]",
+  warning: "border-amber-200 bg-amber-50 text-amber-700",
   danger: "border-red-200 bg-red-50 text-[#b8353a]",
   info: "border-blue-200 bg-blue-50 text-blue-700",
 };
@@ -200,7 +232,7 @@ const BADGE_TONES: Record<BadgeTone, { chip: string; dot: string }> = {
   neutral: { chip: "bg-surface-100 text-ink-700", dot: "bg-ink-400" },
   brand: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-600" },
   success: { chip: "bg-green-100 text-[#0d7a51]", dot: "bg-green-600" },
-  warning: { chip: "bg-amber-100 text-[#8a5e0a]", dot: "bg-amber-600" },
+  warning: { chip: "bg-amber-100 text-amber-700", dot: "bg-amber-600" },
   danger: { chip: "bg-red-100 text-[#b8353a]", dot: "bg-red-600" },
 };
 
