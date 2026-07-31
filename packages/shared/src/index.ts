@@ -44,10 +44,25 @@ export const CHANNEL_LLM_PROVIDERS = ["anthropic", "openai", "deepseek"] as cons
 export type ChannelLlmProvider = (typeof CHANNEL_LLM_PROVIDERS)[number];
 
 export const CHANNEL_LLM_DEFAULT_MODELS: Record<ChannelLlmProvider, string> = {
-  anthropic: "claude-sonnet-4-20250514",
+  anthropic: "claude-sonnet-5",
   openai: "gpt-4o",
   deepseek: "deepseek-chat",
 };
+
+/** Modelos seleccionables por proveedor (Telegram + UI). */
+export const CHANNEL_LLM_MODELS: Record<ChannelLlmProvider, readonly string[]> = {
+  anthropic: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
+  openai: ["gpt-4o", "gpt-4o-mini"],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+};
+
+export function listModelsForProvider(provider: ChannelLlmProvider): readonly string[] {
+  return CHANNEL_LLM_MODELS[provider] ?? [CHANNEL_LLM_DEFAULT_MODELS[provider]];
+}
+
+export function isAllowedModel(provider: ChannelLlmProvider, model: string): boolean {
+  return listModelsForProvider(provider).includes(model);
+}
 
 /**
  * Configuración de categorías/"dominios" por proyecto. Reemplaza el

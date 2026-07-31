@@ -6,6 +6,8 @@ import {
   API_SCOPES,
   CHANNEL_LLM_PROVIDERS,
   CHANNEL_LLM_DEFAULT_MODELS,
+  isAllowedModel,
+  listModelsForProvider,
   type ChannelLlmProvider,
 } from "@pemie/shared";
 import { Prisma } from "@prisma/client";
@@ -22,6 +24,11 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 20;
 /** Retención de updates vistos: cubre de sobra la ventana de reintentos. */
 const UPDATE_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/** Ventana de historial enviada al LLM (user + assistant). */
+export const HISTORY_KEEP = 10;
+const MESSAGE_CONTENT_MAX = 4_000;
+const SUMMARY_MAX = 1_500;
 
 function botUsernameFromToken(_token: string | undefined): string | null {
   return env.TELEGRAM_BOT_USERNAME?.trim() || null;
@@ -48,12 +55,13 @@ function validateLlmKey(provider: ChannelLlmProvider, key: string) {
 
 /** Estado del canal Telegram del usuario (sin secretos). */
 export async function getChannelStatus(userId: string) {
-  const [link, config] = await Promise.all([
+  const [link, config, credentials] = await Promise.all([
     prisma.channelLink.findUnique({ where: { userId_provider: { userId, provider: PROVIDER } } }),
     prisma.userChannelConfig.findUnique({
       where: { userId },
       include: { apiKey: true, defaultProject: { select: { id: true, name: true, slug: true } } },
     }),
+    prisma.channelLlmCredential.findMany({ where: { userId } }),
   ]);
 
   const botConfigured = Boolean(env.TELEGRAM_BOT_TOKEN?.trim());
@@ -62,6 +70,26 @@ export async function getChannelStatus(userId: string) {
     ? (config!.llmProvider as ChannelLlmProvider)
     : "anthropic";
 
+  const providers = Object.fromEntries(
+    CHANNEL_LLM_PROVIDERS.map((p) => {
+      const cred = credentials.find((c) => c.provider === p);
+      const legacy =
+        !cred && config?.llmProvider === p && config.llmKeyCiphertext
+          ? { last4: config.llmKeyLast4 }
+          : null;
+      return [
+        p,
+        {
+          hasKey: Boolean(cred || legacy),
+          last4: cred?.llmKeyLast4 ?? legacy?.last4 ?? null,
+          models: [...listModelsForProvider(p)],
+        },
+      ];
+    })
+  ) as Record<ChannelLlmProvider, { hasKey: boolean; last4: string | null; models: string[] }>;
+
+  const activeHasKey = providers[llmProvider].hasKey;
+
   return {
     botConfigured,
     botUsername,
@@ -69,13 +97,15 @@ export async function getChannelStatus(userId: string) {
     telegramUsername: link?.username ?? null,
     linkedAt: link?.linkedAt ?? null,
     enabled: config?.enabled ?? false,
-    hasLlmKey: Boolean(config?.llmKeyCiphertext),
-    llmKeyLast4: config?.llmKeyLast4 ?? null,
+    hasLlmKey: activeHasKey,
+    llmKeyLast4: providers[llmProvider].last4,
     llmProvider,
     model: config?.model ?? CHANNEL_LLM_DEFAULT_MODELS[llmProvider],
+    models: [...listModelsForProvider(llmProvider)],
+    providers,
     defaultProject: config?.defaultProject ?? null,
     apiKeyPrefix: config?.apiKey?.prefix ?? null,
-    ready: Boolean(link && config?.enabled && config.llmKeyCiphertext),
+    ready: Boolean(link && config?.enabled && activeHasKey),
   };
 }
 
@@ -216,7 +246,7 @@ export async function ensureUserChannelConfig(userId: string, defaultProjectId?:
   });
 }
 
-/** Guarda / actualiza la LLM key del usuario (cifrada) y el proveedor. */
+/** Guarda / actualiza la LLM key del usuario (cifrada) y el proveedor activo. */
 export async function setLlmKey(
   userId: string,
   rawKey: string,
@@ -229,7 +259,22 @@ export async function setLlmKey(
   await ensureUserChannelConfig(userId);
   const ciphertext = encryptSecret(trimmed);
   const last4 = trimmed.slice(-4);
-  const model = opts?.model?.trim() || CHANNEL_LLM_DEFAULT_MODELS[provider];
+  const requested = opts?.model?.trim();
+  // Un modelo fuera del catálogo se rechaza igual que en `setChannelModel`: caer
+  // al default en silencio dejaba al usuario creyendo que guardó otra cosa.
+  if (requested && !isAllowedModel(provider, requested)) {
+    throw badRequest(
+      `Modelo inválido para ${provider}. Usa: ${listModelsForProvider(provider).join(", ")}`,
+      "invalid_model"
+    );
+  }
+  const model = requested || CHANNEL_LLM_DEFAULT_MODELS[provider];
+
+  await prisma.channelLlmCredential.upsert({
+    where: { userId_provider: { userId, provider } },
+    create: { userId, provider, llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
+    update: { llmKeyCiphertext: ciphertext, llmKeyLast4: last4 },
+  });
 
   return prisma.userChannelConfig.update({
     where: { userId },
@@ -240,6 +285,166 @@ export async function setLlmKey(
       model,
       enabled: true,
     },
+  });
+}
+
+/**
+ * Borra la LLM key guardada de un proveedor.
+ *
+ * La key es del usuario y se factura a su cuenta: tiene que poder revocarla desde
+ * el producto. Si además es la del proveedor activo se limpia el espejo en
+ * `UserChannelConfig`, que es de donde leen `loadBotSession` y `getChannelStatus`.
+ */
+export async function deleteLlmKey(userId: string, rawProvider: string) {
+  const provider = parseLlmProvider(rawProvider);
+
+  await prisma.channelLlmCredential.deleteMany({ where: { userId, provider } });
+  await prisma.userChannelConfig.updateMany({
+    where: { userId, llmProvider: provider },
+    data: { llmKeyCiphertext: null, llmKeyLast4: null },
+  });
+
+  return prisma.userChannelConfig.findUnique({ where: { userId } });
+}
+
+/** Cambia el proveedor activo si ya hay credential guardada. */
+export async function setChannelProvider(userId: string, rawProvider: string) {
+  const provider = parseLlmProvider(rawProvider);
+  await ensureUserChannelConfig(userId);
+
+  const cred = await prisma.channelLlmCredential.findUnique({
+    where: { userId_provider: { userId, provider } },
+  });
+  if (!cred) {
+    // Compat: key solo en UserChannelConfig del mismo proveedor
+    const config = await prisma.userChannelConfig.findUnique({ where: { userId } });
+    if (config?.llmProvider === provider && config.llmKeyCiphertext) {
+      await prisma.channelLlmCredential.create({
+        data: {
+          userId,
+          provider,
+          llmKeyCiphertext: config.llmKeyCiphertext,
+          llmKeyLast4: config.llmKeyLast4 ?? "????",
+        },
+      });
+    } else {
+      throw badRequest(
+        `No hay API key guardada para ${provider}. Pégala en Pemie → Agente → Telegram.`,
+        "provider_key_missing"
+      );
+    }
+  }
+
+  const fresh = await prisma.channelLlmCredential.findUniqueOrThrow({
+    where: { userId_provider: { userId, provider } },
+  });
+  const config = await prisma.userChannelConfig.findUniqueOrThrow({ where: { userId } });
+  const model = isAllowedModel(provider, config.model)
+    ? config.model
+    : CHANNEL_LLM_DEFAULT_MODELS[provider];
+
+  return prisma.userChannelConfig.update({
+    where: { userId },
+    data: {
+      llmProvider: provider,
+      llmKeyCiphertext: fresh.llmKeyCiphertext,
+      llmKeyLast4: fresh.llmKeyLast4,
+      model,
+      enabled: true,
+    },
+  });
+}
+
+/** Cambia el modelo del proveedor activo (catálogo fijo). */
+export async function setChannelModel(userId: string, rawModel: string) {
+  await ensureUserChannelConfig(userId);
+  const config = await prisma.userChannelConfig.findUniqueOrThrow({ where: { userId } });
+  const provider = parseLlmProvider(config.llmProvider);
+  const model = rawModel.trim();
+  if (!isAllowedModel(provider, model)) {
+    throw badRequest(
+      `Modelo inválido para ${provider}. Usa: ${listModelsForProvider(provider).join(", ")}`,
+      "invalid_model"
+    );
+  }
+  return prisma.userChannelConfig.update({
+    where: { userId },
+    data: { model },
+  });
+}
+
+function truncateContent(text: string, max = MESSAGE_CONTENT_MAX): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + "…";
+}
+
+export async function listRecentChannelMessages(userId: string, limit = HISTORY_KEEP) {
+  // Ordena por `seq`, no por `createdAt`: el par user+assistant se inserta en la
+  // misma transacción y comparte timestamp, así que el desempate sería arbitrario
+  // y podría abrir el historial con un turno "assistant" (400 del proveedor).
+  const rows = await prisma.channelMessage.findMany({
+    where: { userId, provider: PROVIDER },
+    orderBy: { seq: "desc" },
+    take: limit,
+    select: { role: true, content: true, createdAt: true },
+  });
+  return rows.reverse();
+}
+
+export async function getConversationSummary(userId: string): Promise<string | null> {
+  const config = await prisma.userChannelConfig.findUnique({
+    where: { userId },
+    select: { conversationSummary: true },
+  });
+  return config?.conversationSummary ?? null;
+}
+
+export async function setConversationSummary(userId: string, summary: string | null) {
+  const value = summary ? truncateContent(summary, SUMMARY_MAX) : null;
+  await prisma.userChannelConfig.update({
+    where: { userId },
+    data: { conversationSummary: value },
+  });
+}
+
+/**
+ * Guarda el par user/assistant del turno, poda a HISTORY_KEEP y
+ * devuelve los mensajes expulsados (para actualizar el resumen rolling).
+ */
+export async function recordTurnMessages(
+  userId: string,
+  userText: string,
+  assistantText: string
+): Promise<Array<{ role: string; content: string }>> {
+  await prisma.channelMessage.createMany({
+    data: [
+      { userId, provider: PROVIDER, role: "user", content: truncateContent(userText) },
+      { userId, provider: PROVIDER, role: "assistant", content: truncateContent(assistantText) },
+    ],
+  });
+
+  // Mismo motivo que en `listRecentChannelMessages`: por `createdAt` la poda podría
+  // expulsar el assistant y dejar huérfano su user del mismo turno.
+  const all = await prisma.channelMessage.findMany({
+    where: { userId, provider: PROVIDER },
+    orderBy: { seq: "asc" },
+    select: { id: true, role: true, content: true },
+  });
+
+  if (all.length <= HISTORY_KEEP) return [];
+
+  const overflow = all.slice(0, all.length - HISTORY_KEEP);
+  await prisma.channelMessage.deleteMany({
+    where: { id: { in: overflow.map((m) => m.id) } },
+  });
+  return overflow.map((m) => ({ role: m.role, content: m.content }));
+}
+
+export async function clearChannelMessages(userId: string) {
+  await prisma.channelMessage.deleteMany({ where: { userId, provider: PROVIDER } });
+  await prisma.userChannelConfig.updateMany({
+    where: { userId },
+    data: { conversationSummary: null },
   });
 }
 
@@ -259,14 +464,15 @@ export async function setDefaultProject(userId: string, projectId: string | null
   });
 }
 
-/** Desvincula Telegram y desactiva el canal (no borra la user key MCP). */
+/** Desvincula Telegram y desactiva el canal (no borra la user key MCP ni credentials). */
 export async function disconnectChannel(userId: string) {
   await prisma.channelLink.deleteMany({ where: { userId, provider: PROVIDER } });
+  await clearChannelMessages(userId).catch(() => {});
   const config = await prisma.userChannelConfig.findUnique({ where: { userId } });
   if (config) {
     await prisma.userChannelConfig.update({
       where: { userId },
-      data: { enabled: false, llmKeyCiphertext: null, llmKeyLast4: null },
+      data: { enabled: false },
     });
   }
   return { ok: true };
@@ -343,5 +549,19 @@ export async function loadBotSession(telegramUserId: string) {
   });
   if (!config || !config.enabled) return null;
 
-  return { link, config };
+  // Preferir credential del proveedor activo; fallback al espejo en config.
+  const cred = await prisma.channelLlmCredential.findUnique({
+    where: { userId_provider: { userId: link.userId, provider: config.llmProvider } },
+  });
+  const llmKeyCiphertext = cred?.llmKeyCiphertext ?? config.llmKeyCiphertext;
+  const llmKeyLast4 = cred?.llmKeyLast4 ?? config.llmKeyLast4;
+
+  return {
+    link,
+    config: {
+      ...config,
+      llmKeyCiphertext,
+      llmKeyLast4,
+    },
+  };
 }

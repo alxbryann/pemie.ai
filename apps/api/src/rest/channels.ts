@@ -47,6 +47,12 @@ export function channelRoutes() {
     return c.json({ channel: await channels.getChannelStatus(user.id) });
   });
 
+  app.delete("/telegram/llm-key/:provider", async (c) => {
+    const user = requireUser(c);
+    await channels.deleteLlmKey(user.id, c.req.param("provider"));
+    return c.json({ channel: await channels.getChannelStatus(user.id) });
+  });
+
   app.put("/telegram/default-project", async (c) => {
     const user = requireUser(c);
     const body = defaultProjectSchema.safeParse(await c.req.json().catch(() => null));
