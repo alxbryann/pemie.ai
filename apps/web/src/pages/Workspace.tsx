@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Role } from "@pemie/shared";
 import {
   api,
+  analyticsFailureReason,
   ApiError,
   type Workspace as Ws,
   type ProjectSummary,
   type Member,
   type Invitation,
 } from "../lib/api.js";
+import { track } from "../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -155,11 +157,13 @@ function ProjectsSection({
     setError(null);
     try {
       await api.projects.create(slug, { name, key: key || undefined });
+      track("project_created");
       setName("");
       setKey("");
       setCreating(false);
       await onChange();
     } catch (err) {
+      track("project_created_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo crear el proyecto");
     } finally {
       setBusy(false);
@@ -264,6 +268,7 @@ function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws)
     setRenameError(null);
     try {
       const { workspace } = await api.workspaces.update(ws.slug, trimmed);
+      track("workspace_updated");
       onRenamed(workspace); // el estado de la página se refresca sin recargar
       setSaved(true);
     } catch (err) {
@@ -280,6 +285,7 @@ function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws)
     setDeleteError(null);
     try {
       await api.workspaces.remove(ws.slug);
+      track("workspace_deleted");
       // La ruta actual deja de existir: se vuelve a la lista sin dejarla en el historial.
       navigate("/", { replace: true });
     } catch (err) {
@@ -410,10 +416,13 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
     setError(null);
     try {
       const res = await api.workspaces.invite(slug, email);
+      // Nunca el email completo: si hace falta segmentar, dominio del correo.
+      track("workspace_member_invited", { role: res.invitation.role, email_domain: email.split("@")[1] ?? "" });
       setLastInvite(res.invitation);
       setEmail("");
       await load();
     } catch (err) {
+      track("workspace_member_invited_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo invitar");
     } finally {
       setBusy(false);
@@ -421,7 +430,10 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
   }
 
   async function onRevoke(id: string) {
-    await api.workspaces.revokeInvite(slug, id).catch(() => {});
+    await api.workspaces
+      .revokeInvite(slug, id)
+      .then(() => track("workspace_invite_revoked"))
+      .catch(() => {});
     await load();
   }
 

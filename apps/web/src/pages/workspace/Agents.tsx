@@ -8,6 +8,7 @@ import {
 } from "@pemie/shared";
 import {
   api,
+  analyticsFailureReason,
   ApiError,
   API_BASE,
   type ApiKeyPublic,
@@ -16,6 +17,7 @@ import {
   type WorkspaceAgent,
   type Workspace as Ws,
 } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import { TelegramChannelCard } from "../../components/TelegramChannelCard.js";
 import {
   Badge,
@@ -180,9 +182,11 @@ export default function WorkspaceAgents() {
     setError(null);
     try {
       await api.agents.create(slug, agentProjectSlug, agentName.trim());
+      track("agent_registered");
       setAgentName("");
       await load();
     } catch (e) {
+      track("agent_registered_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear el agente");
     } finally {
       setCreatingAgent(false);
@@ -207,10 +211,12 @@ export default function WorkspaceAgents() {
         agentId: scopeLevel === "project" && agentId ? agentId : undefined,
         scopes,
       });
+      track("api_key_created", { scope_level: scopeLevel });
       setNewKey(r.key);
       setKeyName("");
       await load();
     } catch (e) {
+      track("api_key_created_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear la API key");
     } finally {
       setCreating(false);
@@ -223,6 +229,7 @@ export default function WorkspaceAgents() {
     setRevokeError(null);
     try {
       await api.apiKeys.revoke(slug, pendingRevoke.id);
+      track("api_key_revoked");
       setPendingRevoke(null);
       await load();
     } catch (e) {

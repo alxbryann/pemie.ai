@@ -1,6 +1,7 @@
-import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
-import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
 import { safeNextPath, useAuth } from "./lib/auth.js";
+import { track } from "./lib/analytics/index.js";
 import { Layout } from "./components/Layout.js";
 import { Spinner } from "./components/ui.js";
 import Login from "./pages/Login.js";
@@ -10,9 +11,28 @@ import Workspace from "./pages/Workspace.js";
 import WorkspaceAgents from "./pages/workspace/Agents.js";
 import Project from "./pages/Project.js";
 import AcceptInvite from "./pages/AcceptInvite.js";
+import Settings from "./pages/Settings.js";
 
 export default function App() {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // El callback de GitHub OAuth (rest/auth.ts) nunca pasa por el submit de
+  // Login.tsx, así que `user_logged_in` no se dispara ahí. El backend marca el
+  // redirect de éxito con `?oauth=github`; acá, ya con el usuario identificado
+  // (AuthProvider ya corrió identify()), se dispara una sola vez y se limpia la URL.
+  useEffect(() => {
+    if (loading || !user) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("oauth") !== "github") return;
+    track("user_logged_in");
+    params.delete("oauth");
+    const query = params.toString();
+    navigate(`${location.pathname}${query ? `?${query}` : ""}`, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, location.pathname, location.search]);
+
   if (loading) return <Spinner />;
 
   return (
@@ -22,6 +42,7 @@ export default function App() {
       <Route path="/invite/:token" element={<AcceptInvite />} />
 
       <Route path="/" element={<Protected><Workspaces /></Protected>} />
+      <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/w/:slug" element={<Protected><Workspace /></Protected>} />
       <Route path="/w/:slug/agents" element={<Protected><WorkspaceAgents /></Protected>} />
       <Route path="/w/:slug/p/:projectSlug" element={<Protected><Project /></Protected>} />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, type Note, type Objective, type Report } from "../../lib/api.js";
+import { api, analyticsFailureReason, ApiError, type Note, type Objective, type Report } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -51,8 +52,10 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
     if (objText.trim().length < 3) return;
     try {
       const r = await api.objective.set(ws, proj, objText.trim());
+      track("report_objective_set");
       setObjective(r.objective);
     } catch (e) {
+      track("report_objective_set_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo guardar el objetivo");
     }
   }
@@ -62,9 +65,11 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
     if (!noteText.trim()) return;
     try {
       await api.notes.create(ws, proj, noteText.trim());
+      track("report_note_created");
       setNoteText("");
       await load();
     } catch (e) {
+      track("report_note_created_failed", { reason: analyticsFailureReason(e) });
       setError(e instanceof ApiError ? e.message : "No se pudo crear la nota");
     }
   }
@@ -72,7 +77,10 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
   async function answerNote(id: string) {
     const resp = (answers[id] ?? "").trim();
     if (!resp) return;
-    await api.notes.answer(ws, proj, id, resp).catch(() => {});
+    await api.notes
+      .answer(ws, proj, id, resp)
+      .then(() => track("report_note_answered"))
+      .catch((e) => track("report_note_answered_failed", { reason: analyticsFailureReason(e) }));
     setAnswers((a) => ({ ...a, [id]: "" }));
     await load();
   }

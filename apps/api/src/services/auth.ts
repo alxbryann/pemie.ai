@@ -14,7 +14,7 @@ const BCRYPT_ROUNDS = 12;
 /** Usuario expuesto al cliente (sin passwordHash). */
 export type PublicUser = Pick<
   User,
-  "id" | "email" | "name" | "avatarUrl" | "githubLogin" | "createdAt"
+  "id" | "email" | "name" | "avatarUrl" | "githubLogin" | "createdAt" | "analyticsEnabled"
 >;
 
 export function toPublicUser(u: User): PublicUser {
@@ -25,6 +25,7 @@ export function toPublicUser(u: User): PublicUser {
     avatarUrl: u.avatarUrl,
     githubLogin: u.githubLogin,
     createdAt: u.createdAt,
+    analyticsEnabled: u.analyticsEnabled,
   };
 }
 
@@ -83,6 +84,18 @@ export async function login(input: {
 /** Cierra la sesión asociada a un token (idempotente). */
 export async function logout(token: string): Promise<void> {
   await prisma.session.deleteMany({ where: { token } });
+}
+
+/** Preferencia de analítica de producto (toggle reversible en /settings). */
+export async function updateAnalyticsPreference(
+  userId: string,
+  enabled: boolean
+): Promise<PublicUser> {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { analyticsEnabled: enabled },
+  });
+  return toPublicUser(user);
 }
 
 /**

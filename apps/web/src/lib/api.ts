@@ -34,6 +34,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Motivo de fallo para un evento `*_failed`: solo el código de error tipado,
+ * nunca `message` (puede traer texto libre del backend con datos del intento).
+ */
+export function analyticsFailureReason(err: unknown): string {
+  return err instanceof ApiError ? err.code ?? "unknown_error" : "unknown_error";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
@@ -85,6 +93,7 @@ export interface User {
   avatarUrl: string | null;
   githubLogin: string | null;
   createdAt: string;
+  analyticsEnabled: boolean;
 }
 
 export interface WorkspaceSummary {
@@ -368,6 +377,8 @@ export const api = {
     login: (input: { email: string; password: string }) =>
       post<{ user: User }>("/api/auth/login", input),
     logout: () => post<{ ok: true }>("/api/auth/logout"),
+    updateAnalyticsPreference: (analyticsEnabled: boolean) =>
+      patch<{ user: User }>("/api/auth/me/analytics-preference", { analyticsEnabled }),
     /** URL para iniciar el OAuth de GitHub; `next` es la ruta a la que volver. */
     githubUrl: (next?: string) =>
       `${API_URL}/api/auth/github${next ? `?next=${encodeURIComponent(next)}` : ""}`,

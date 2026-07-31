@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { safeNextPath, useAuth } from "../lib/auth.js";
-import { api, ApiError } from "../lib/api.js";
+import { api, analyticsFailureReason, ApiError } from "../lib/api.js";
+import { track } from "../lib/analytics/index.js";
 import { Button, Card, ErrorText, Eyebrow, Field, Input, LogoMark, Wordmark } from "../components/ui.js";
 
 export default function Login() {
@@ -22,8 +23,10 @@ export default function Login() {
     setBusy(true);
     try {
       await login(email, password);
+      track("user_logged_in");
       navigate(next, { replace: true });
     } catch (err) {
+      track("user_logged_in_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo iniciar sesión");
     } finally {
       setBusy(false);

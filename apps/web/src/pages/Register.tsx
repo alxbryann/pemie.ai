@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { safeNextPath, useAuth } from "../lib/auth.js";
-import { ApiError } from "../lib/api.js";
+import { analyticsFailureReason, ApiError } from "../lib/api.js";
+import { track } from "../lib/analytics/index.js";
 import { Button, ErrorText, Field, Input } from "../components/ui.js";
 import { AuthShell } from "./Login.js";
 
@@ -23,8 +24,10 @@ export default function Register() {
     setBusy(true);
     try {
       await register(email, password, name || undefined);
+      track("user_signed_up");
       navigate(next, { replace: true });
     } catch (err) {
+      track("user_signed_up_failed", { reason: analyticsFailureReason(err) });
       setError(err instanceof ApiError ? err.message : "No se pudo crear la cuenta");
     } finally {
       setBusy(false);
