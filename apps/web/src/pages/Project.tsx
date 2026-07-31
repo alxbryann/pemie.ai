@@ -6,11 +6,13 @@ import CommitsTab from "./project/CommitsTab.js";
 import ReportsTab from "./project/ReportsTab.js";
 import StoriesTab from "./project/StoriesTab.js";
 import BoardTab from "./project/BoardTab.js";
+import AgentTab from "./project/AgentTab.js";
 const TABS = [
   { id: "commits", label: "Ingesta de commits" },
   { id: "reports", label: "Objetivo e informes" },
   { id: "stories", label: "Historias de usuario" },
   { id: "board", label: "Kanban" },
+  { id: "agent", label: "Agente (MCP)" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -67,6 +69,7 @@ export default function Project() {
       {tab === "reports" && <ReportsTab ws={slug} proj={projectSlug} />}
       {tab === "stories" && <StoriesTab ws={slug} proj={projectSlug} />}
       {tab === "board" && <BoardTab ws={slug} proj={projectSlug} />}
+      {tab === "agent" && <AgentTab ws={slug} proj={projectSlug} />}
     </div>
   );
 }

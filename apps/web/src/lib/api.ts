@@ -500,6 +500,8 @@ export const api = {
   },
   audit: {
     list: (w: string) => get<{ auditLogs: AuditLog[] }>(`/api/workspaces/${w}/audit`),
+    listForProject: (w: string, p: string) =>
+      get<{ auditLogs: AuditLog[] }>(`${pp(w, p)}/audit`),
   },
 
   channels: {
