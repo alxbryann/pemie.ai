@@ -11,7 +11,9 @@ import {
   SkeletonList,
   ErrorText,
   Input,
+  Modal,
   Select,
+  TrashIcon,
 } from "../../components/ui.js";
 
 const STATUSES = ["backlog", "ready", "in_progress", "review", "done"];
@@ -43,6 +45,10 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
   const [role, setRole] = useState("");
   const [want, setWant] = useState("");
   const [benefit, setBenefit] = useState("");
+
+  const [pendingDelete, setPendingDelete] = useState<UserStory | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -85,6 +91,21 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
   async function setStatus(id: string, status: string) {
     setStories((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
     await api.stories.update(ws, proj, id, { status }).catch(() => load());
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.stories.remove(ws, proj, pendingDelete.id);
+      setPendingDelete(null);
+      await load();
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : "No se pudo eliminar la HU");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading)
@@ -198,6 +219,14 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
                         </option>
                       ))}
                     </Select>
+                    <button
+                      type="button"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      aria-label={`Eliminar ${s.key} — ${s.title}`}
+                      onClick={() => setPendingDelete(s)}
+                    >
+                      <TrashIcon />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -217,6 +246,49 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
             ))}
           </div>
         </Card>
+      )}
+
+      {pendingDelete && (
+        <Modal
+          title="Eliminar historia de usuario"
+          onClose={() => {
+            if (!deleting) {
+              setPendingDelete(null);
+              setDeleteError(null);
+            }
+          }}
+        >
+          <div className="space-y-4">
+            <ErrorText>{deleteError}</ErrorText>
+            <p className="text-body text-ink-700">
+              ¿Eliminar{" "}
+              <Badge tone="brand" mono>
+                {pendingDelete.key}
+              </Badge>{" "}
+              — <span className="font-medium text-ink-900">{pendingDelete.title}</span>? Esta
+              acción no se puede deshacer.
+            </p>
+            <p className="text-body-sm text-ink-500">
+              Si esta historia tiene una tarjeta en el Kanban, la tarjeta se conserva pero
+              queda sin HU vinculada.
+            </p>
+            <div className="flex justify-end gap-2 border-t border-line-100 pt-4">
+              <Button
+                variant="secondary"
+                disabled={deleting}
+                onClick={() => {
+                  setPendingDelete(null);
+                  setDeleteError(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button variant="danger" disabled={deleting} onClick={confirmDelete}>
+                {deleting ? "Eliminando…" : "Eliminar"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
