@@ -42,12 +42,24 @@ export default {
         accent: "var(--accent)",
         "accent-hover": "var(--accent-hover)",
         "accent-tint": "var(--accent-tint)",
+
+        // On-ink: texto/superficies sobre secciones invertidas (hero, MCP, CTA final).
+        "surface-ink": "var(--surface-ink)",
+        "surface-ink-deep": "var(--surface-ink-deep)",
+        "line-onink": "var(--line-onink)",
+        "on-ink": "var(--text-on-ink)",
+        "on-ink-soft": "var(--text-on-ink-soft)",
+        "on-ink-muted": "var(--text-on-ink-muted)",
+        "on-ink-code": "var(--text-on-ink-code)",
+        "accent-onink": "var(--accent-on-ink)",
+        "code-string": "var(--code-string)",
       },
       fontFamily: {
         sans: ["Sora", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
         mono: ["'IBM Plex Mono'", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {
+        hero: ["var(--fs-hero)", { lineHeight: "0.95", letterSpacing: "var(--ls-hero)" }],
         display: ["56px", { lineHeight: "1.02", letterSpacing: "-0.03em" }],
         h1: ["42px", { lineHeight: "1.1", letterSpacing: "-0.03em" }],
         h2: ["32px", { lineHeight: "1.1", letterSpacing: "-0.02em" }],
@@ -80,6 +92,26 @@ export default {
       },
       transitionTimingFunction: {
         overshoot: "cubic-bezier(.34,1.56,.64,1)",
+      },
+      keyframes: {
+        fadeUp: {
+          from: { opacity: "0", transform: "translateY(18px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        letterIn: {
+          "0%": { opacity: "0", transform: "translateY(80px) scale(0.85) rotate(8deg)" },
+          "60%": { opacity: "1", transform: "translateY(-12px) scale(1.03) rotate(-3deg)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1) rotate(0deg)" },
+        },
+        caretBlink: {
+          "0%, 49%": { opacity: "1" },
+          "50%, 100%": { opacity: "0" },
+        },
+      },
+      animation: {
+        "fade-up": "fadeUp 0.7s ease both",
+        "letter-in": "letterIn 0.65s cubic-bezier(0.2,0.9,0.3,1.25) both",
+        "caret-blink": "caretBlink 1.1s step-end infinite",
       },
     },
   },
