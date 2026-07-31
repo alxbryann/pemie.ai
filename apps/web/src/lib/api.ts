@@ -301,6 +301,11 @@ export interface TelegramChannelStatus {
   llmKeyLast4: string | null;
   llmProvider: "anthropic" | "openai" | "deepseek";
   model: string;
+  models: string[];
+  providers: Record<
+    "anthropic" | "openai" | "deepseek",
+    { hasKey: boolean; last4: string | null; models: string[] }
+  >;
   defaultProject: { id: string; name: string; slug: string } | null;
   apiKeyPrefix: string | null;
   ready: boolean;
@@ -505,6 +510,10 @@ export const api = {
         provider: opts?.provider,
         model: opts?.model,
       }),
+    deleteLlmKey: (provider: "anthropic" | "openai" | "deepseek") =>
+      del<{ channel: TelegramChannelStatus }>(
+        `/api/me/channels/telegram/llm-key/${provider}`
+      ),
     setDefaultProject: (projectId: string | null) =>
       put<{ channel: TelegramChannelStatus }>("/api/me/channels/telegram/default-project", {
         projectId,

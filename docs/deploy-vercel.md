@@ -141,10 +141,25 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 ### Smoke test
 
 1. En Pemie → proyecto → Agente → **Canal Telegram**: generar enlace y abrir en Telegram (`/start`).
-2. Elegir proveedor (Anthropic / OpenAI / DeepSeek), pegar API key (BYOK) y guardar.
+2. Elegir proveedor (Anthropic / OpenAI / DeepSeek), modelo y pegar API key (BYOK); guardar. Puedes guardar keys de varios proveedores.
 3. En el bot: `/estado` (debe decir listo) → pregunta p. ej. “lista mis proyectos” o “muéstrame el tablero”.
-4. Comprobar AuditLog en el workspace (`mcp.list_projects`, `mcp.list_board`, …).
-5. `/desvincular` invalida el uso del bot hasta volver a vincular.
+4. Historial: el bot recuerda los últimos 10 mensajes + un resumen rolling de lo anterior. `/reset` (o `/nueva`) limpia.
+5. `/modelo` lista/cambia modelos del proveedor activo; `/proveedor openai` cambia si ya hay key guardada para ese proveedor.
+6. Comprobar AuditLog en el workspace (`mcp.list_projects`, `mcp.list_board`, …).
+7. `/desvincular` invalida el uso del bot hasta volver a vincular (conserva keys BYOK).
+
+### BotFather `/setcommands`
+
+```
+start - Vincular cuenta Pemie
+ayuda - Ver comandos
+estado - Vínculo, LLM y proyecto
+proyecto - Fijar proyecto por defecto
+modelo - Ver o cambiar modelo LLM
+proveedor - Ver o cambiar proveedor LLM
+reset - Limpiar historial del chat
+desvincular - Cortar vínculo con Telegram
+```
 
 ## Trampas del runtime serverless (todas costaron un deploy caído)
 

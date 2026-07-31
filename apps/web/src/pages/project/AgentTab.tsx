@@ -4,6 +4,7 @@ import {
   API_KEY_SCOPE_LEVELS,
   CHANNEL_LLM_PROVIDERS,
   CHANNEL_LLM_DEFAULT_MODELS,
+  CHANNEL_LLM_MODELS,
   type ApiKeyScopeLevel,
   type ChannelLlmProvider,
 } from "@pemie/shared";
@@ -56,6 +57,7 @@ function TelegramChannelCard({ projectId }: { projectId: string }) {
   const [startPayload, setStartPayload] = useState<string | null>(null);
   const [llmKey, setLlmKey] = useState("");
   const [llmProvider, setLlmProvider] = useState<ChannelLlmProvider>("anthropic");
+  const [llmModel, setLlmModel] = useState(CHANNEL_LLM_DEFAULT_MODELS.anthropic);
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -64,6 +66,7 @@ function TelegramChannelCard({ projectId }: { projectId: string }) {
       const r = await api.channels.telegramStatus();
       setStatus(r.channel);
       if (r.channel.llmProvider) setLlmProvider(r.channel.llmProvider);
+      if (r.channel.model) setLlmModel(r.channel.model);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Error cargando Telegram");
     } finally {
@@ -97,15 +100,29 @@ function TelegramChannelCard({ projectId }: { projectId: string }) {
     try {
       const r = await api.channels.setLlmKey(llmKey.trim(), {
         provider: llmProvider,
-        model: CHANNEL_LLM_DEFAULT_MODELS[llmProvider],
+        model: llmModel || CHANNEL_LLM_DEFAULT_MODELS[llmProvider],
       });
       setStatus(r.channel);
       setLlmKey("");
       await api.channels.setDefaultProject(projectId);
       const refreshed = await api.channels.telegramStatus();
       setStatus(refreshed.channel);
+      if (refreshed.channel.model) setLlmModel(refreshed.channel.model);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar la key");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteLlmKey(provider: ChannelLlmProvider) {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.channels.deleteLlmKey(provider);
+      setStatus(r.channel);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo borrar la key");
     } finally {
       setBusy(false);
     }
@@ -126,6 +143,10 @@ function TelegramChannelCard({ projectId }: { projectId: string }) {
   }
 
   if (loading) return <SkeletonCard lines={3} />;
+
+  const savedProviders = status?.providers
+    ? CHANNEL_LLM_PROVIDERS.filter((p) => status.providers[p]?.hasKey)
+    : [];
 
   const stateLabel = !status?.botConfigured
     ? "Bot no configurado en el servidor"
@@ -213,24 +234,76 @@ function TelegramChannelCard({ projectId }: { projectId: string }) {
             </div>
           )}
 
+          {status.linked && status.providers && (
+            <div className="space-y-2">
+              <p className="text-caption text-ink-500">
+                Keys guardadas. En Telegram: /proveedor, /modelo, /reset.
+              </p>
+              {savedProviders.length === 0 ? (
+                <p className="text-caption text-ink-400">
+                  Ninguna todavía: pega una key abajo para activar el bot.
+                </p>
+              ) : (
+                <ul className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {savedProviders.map((p) => (
+                    <li key={p} className="flex items-center gap-2">
+                      <span className="text-caption text-ink-600">
+                        {LLM_PROVIDER_LABELS[p]}{" "}
+                        <code className="font-mono">…{status.providers[p].last4}</code>
+                      </span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => deleteLlmKey(p)}
+                        disabled={busy}
+                        aria-label={`Borrar la API key de ${LLM_PROVIDER_LABELS[p]}`}
+                      >
+                        Borrar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {status.linked && (
             <form onSubmit={saveLlmKey} className="flex flex-wrap gap-2">
               <Select
                 value={llmProvider}
-                onChange={(e) => setLlmProvider(e.target.value as ChannelLlmProvider)}
+                onChange={(e) => {
+                  const p = e.target.value as ChannelLlmProvider;
+                  setLlmProvider(p);
+                  setLlmModel(CHANNEL_LLM_DEFAULT_MODELS[p]);
+                }}
                 aria-label="Proveedor LLM"
               >
                 {CHANNEL_LLM_PROVIDERS.map((p) => (
                   <option key={p} value={p}>
                     {LLM_PROVIDER_LABELS[p]}
+                    {status.providers?.[p]?.hasKey ? " ✓" : ""}
                   </option>
                 ))}
+              </Select>
+              <Select
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                aria-label="Modelo LLM"
+              >
+                {(CHANNEL_LLM_MODELS[llmProvider] ?? [CHANNEL_LLM_DEFAULT_MODELS[llmProvider]]).map(
+                  (m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  )
+                )}
               </Select>
               <Input
                 type="password"
                 placeholder={
-                  status.hasLlmKey && status.llmProvider === llmProvider
-                    ? `Key actual …${status.llmKeyLast4}`
+                  status.providers?.[llmProvider]?.hasKey
+                    ? `Key actual …${status.providers[llmProvider].last4}`
                     : LLM_KEY_PLACEHOLDER[llmProvider]
                 }
                 value={llmKey}
