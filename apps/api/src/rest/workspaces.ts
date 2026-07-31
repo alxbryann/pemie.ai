@@ -25,6 +25,7 @@ const inviteSchema = z.object({
   email: z.string().email(),
   role: z.enum(["admin", "member", "viewer"]).optional(),
 });
+const updateMemberRoleSchema = z.object({ role: z.enum(["admin", "member", "viewer"]) });
 const linkRepoSchema = z.object({
   owner: z.string().min(1),
   name: z.string().min(1),
@@ -170,6 +171,20 @@ export function workspaceRoutes() {
     const user = requireUser(c);
     const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
     return c.json({ members: await tenancy.listMembers(user.id, ws.id) });
+  });
+
+  app.patch("/:slug/members/:membershipId", async (c) => {
+    const user = requireUser(c);
+    const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    const body = updateMemberRoleSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) throw badRequest("Rol inválido", "invalid_body");
+    const member = await tenancy.updateMemberRole(
+      user.id,
+      ws.id,
+      c.req.param("membershipId"),
+      body.data.role
+    );
+    return c.json({ member });
   });
 
   // ─── Invitaciones (owner/admin) ────────────────────────────────────

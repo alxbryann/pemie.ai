@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { Role } from "@pemie/shared";
 import {
   api,
   ApiError,
@@ -18,11 +19,15 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   Skeleton,
   SkeletonCard,
   SkeletonList,
   type BadgeTone,
 } from "../components/ui.js";
+
+/** Roles asignables desde el selector de la fila (no hay flujo de transferencia de owner). */
+const ASSIGNABLE_ROLES: Role[] = ["viewer", "member", "admin"];
 
 export default function Workspace() {
   const { slug = "" } = useParams();
@@ -351,6 +356,8 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
   const [error, setError] = useState<string | null>(null);
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
+  const [roleErrors, setRoleErrors] = useState<Record<string, string>>({});
 
   function inviteLink(token: string) {
     return `${window.location.origin}/invite/${token}`;
@@ -397,28 +404,69 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
     await load();
   }
 
+  async function onRoleChange(membershipId: string, role: Role) {
+    setRoleBusyId(membershipId);
+    setRoleErrors((prev) => ({ ...prev, [membershipId]: "" }));
+    try {
+      const { member } = await api.workspaces.updateMemberRole(slug, membershipId, role);
+      // Reemplaza solo la fila afectada: evita un refetch completo de la lista.
+      setMembers((prev) => prev.map((m) => (m.membershipId === membershipId ? member : m)));
+    } catch (err) {
+      setRoleErrors((prev) => ({
+        ...prev,
+        [membershipId]: err instanceof ApiError ? err.message : "No se pudo cambiar el rol",
+      }));
+    } finally {
+      setRoleBusyId(null);
+    }
+  }
+
   return (
     <section>
       <h2 className="mb-4 text-h3 text-ink-900">Equipo</h2>
       <Card>
         <ul className="divide-y divide-line-100">
-          {members.map((m) => (
-            <li
-              key={m.membershipId}
-              className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
-            >
-              <div className="grid h-8 w-8 flex-none place-items-center rounded-pill bg-surface-100 text-caption font-semibold text-ink-700">
-                {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-body-sm font-medium text-ink-900">
-                  {m.user.name ?? m.user.email}
-                </p>
-                <p className="truncate font-mono text-caption text-ink-400">{m.user.email}</p>
-              </div>
-              <Badge tone="neutral" mono>{m.role}</Badge>
-            </li>
-          ))}
+          {members.map((m) => {
+            const editable = canManage && m.role !== "owner";
+            return (
+              <li
+                key={m.membershipId}
+                className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
+              >
+                <div className="grid h-8 w-8 flex-none place-items-center rounded-pill bg-surface-100 text-caption font-semibold text-ink-700">
+                  {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-body-sm font-medium text-ink-900">
+                    {m.user.name ?? m.user.email}
+                  </p>
+                  <p className="truncate font-mono text-caption text-ink-400">{m.user.email}</p>
+                </div>
+                {editable ? (
+                  <div className="flex flex-none flex-col items-end gap-1">
+                    <Select
+                      aria-label={`Rol de ${m.user.name ?? m.user.email}`}
+                      value={m.role}
+                      disabled={roleBusyId === m.membershipId}
+                      onChange={(e) => onRoleChange(m.membershipId, e.target.value as Role)}
+                      className="w-auto py-1.5 font-mono text-caption"
+                    >
+                      {ASSIGNABLE_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </Select>
+                    {roleErrors[m.membershipId] ? (
+                      <ErrorText>{roleErrors[m.membershipId]}</ErrorText>
+                    ) : null}
+                  </div>
+                ) : (
+                  <Badge tone="neutral" mono>{m.role}</Badge>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </Card>
 

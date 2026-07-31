@@ -116,6 +116,30 @@ export async function listMembers(userId: string, workspaceId: string) {
   }));
 }
 
+/**
+ * Cambia el rol de un miembro (owner/admin). No se puede asignar `owner`
+ * (no hay flujo de transferencia de ownership) ni tocar la membresía del
+ * propio owner (dejaría el workspace sin dueño).
+ */
+export async function updateMemberRole(
+  userId: string,
+  workspaceId: string,
+  membershipId: string,
+  newRole: Role
+) {
+  await requireMembership(userId, workspaceId, "admin");
+  const target = await prisma.membership.findUnique({
+    where: { id: membershipId },
+    include: { user: { select: { id: true, email: true, name: true, avatarUrl: true } } },
+  });
+  if (!target || target.workspaceId !== workspaceId) throw notFound("Miembro no encontrado");
+  if (target.role === "owner") throw forbidden("No se puede cambiar el rol del owner");
+  if (newRole === "owner") throw badRequest("No se puede asignar el rol owner", "invalid_role");
+  const updated = await prisma.membership.update({ where: { id: membershipId }, data: { role: newRole } });
+  // Misma forma que `listMembers` para que el cliente reemplace la fila en su estado.
+  return { membershipId: updated.id, role: updated.role as Role, user: target.user };
+}
+
 // ─── Invitaciones ──────────────────────────────────────────────────────
 
 /** Crea una invitación (owner/admin). */
