@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { safeNextPath, useAuth } from "./lib/auth.js";
 import { Layout } from "./components/Layout.js";
 import { Spinner } from "./components/ui.js";
+import Landing from "./pages/landing/Landing.js";
 import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
 import Workspaces from "./pages/Workspaces.js";
@@ -17,11 +18,12 @@ export default function App() {
 
   return (
     <Routes>
+      <Route path="/" element={<PublicLanding />} />
       <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><Register /></GuestOnly>} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
 
-      <Route path="/" element={<Protected><Workspaces /></Protected>} />
+      <Route path="/app" element={<Protected><Workspaces /></Protected>} />
       <Route path="/w/:slug" element={<Protected><Workspace /></Protected>} />
       <Route path="/w/:slug/agents" element={<Protected><WorkspaceAgents /></Protected>} />
       <Route path="/w/:slug/p/:projectSlug" element={<Protected><Project /></Protected>} />
@@ -29,6 +31,13 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+/** `/` es la landing pública; con sesión activa redirige directo al dashboard. */
+function PublicLanding() {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/app" replace />;
+  return <Landing />;
 }
 
 /**

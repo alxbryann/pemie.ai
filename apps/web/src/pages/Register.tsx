@@ -59,7 +59,7 @@ export default function Register() {
       <p className="mt-6 text-center text-body-sm text-ink-500">
         ¿Ya tienes cuenta?{" "}
         <Link
-          to={next === "/" ? "/login" : `/login?next=${encodeURIComponent(next)}`}
+          to={next === "/app" ? "/login" : `/login?next=${encodeURIComponent(next)}`}
           className="font-medium text-blue-600 hover:underline"
         >
           Entra
