@@ -39,6 +39,31 @@ export type ApiScope = (typeof API_SCOPES)[number];
 export const API_KEY_SCOPE_LEVELS = ["project", "workspace", "user"] as const;
 export type ApiKeyScopeLevel = (typeof API_KEY_SCOPE_LEVELS)[number];
 
+/** Nombres de las tools MCP expuestas por el servidor (mcp/index.ts). Única fuente de verdad para no desincronizar el prompt sugerido en la UI. */
+export const MCP_TOOL_NAMES = [
+  "list_workspaces",
+  "list_projects",
+  "get_project_context",
+  "list_commits",
+  "get_evaluation",
+  "publish_report",
+  "list_notes",
+  "answer_note",
+  "get_objective",
+  "update_objective",
+  "list_user_stories",
+  "create_user_story",
+  "update_user_story",
+  "assign_user_story",
+  "list_contributors",
+  "list_board",
+  "create_card",
+  "move_card",
+  "link_story_to_card",
+  "get_story_commit_progress",
+] as const;
+export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
+
 /** Proveedores LLM BYOK para el canal Telegram. */
 export const CHANNEL_LLM_PROVIDERS = ["anthropic", "openai", "deepseek"] as const;
 export type ChannelLlmProvider = (typeof CHANNEL_LLM_PROVIDERS)[number];
