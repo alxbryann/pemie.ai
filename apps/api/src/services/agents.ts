@@ -431,3 +431,13 @@ export async function listAuditLogs(userId: string, workspaceId: string, limit =
     take: Math.min(Math.max(limit, 1), 500),
   });
 }
+
+/** Lista el AuditLog de acciones de agentes en un proyecto, más reciente primero (viewer+). */
+export async function listAuditLogsForProject(userId: string, projectId: string, limit = 100) {
+  const project = await projectWithAccess(userId, projectId);
+  return prisma.auditLog.findMany({
+    where: { workspaceId: project.workspaceId, entity: "Project", entityId: projectId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 500),
+  });
+}

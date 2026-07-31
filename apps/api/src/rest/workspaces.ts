@@ -417,6 +417,13 @@ export function workspaceRoutes() {
     return c.json({ agent }, 201);
   });
 
+  app.get("/:slug/projects/:projectSlug/audit", async (c) => {
+    const user = requireUser(c);
+    const project = await resolveProject(c);
+    const limit = Number(c.req.query("limit")) || undefined;
+    return c.json({ auditLogs: await agentsSvc.listAuditLogsForProject(user.id, project.id, limit) });
+  });
+
   // ─── F4: Agentes del workspace (todos los proyectos) ───────────────
   app.get("/:slug/agents", async (c) => {
     const user = requireUser(c);
