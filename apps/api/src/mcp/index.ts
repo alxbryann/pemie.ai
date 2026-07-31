@@ -6,7 +6,7 @@
 
 import { Hono } from "hono";
 import type { ApiKey } from "@prisma/client";
-import type { ApiScope } from "@pemie/shared";
+import { MCP_TOOL_NAMES, type ApiScope } from "@pemie/shared";
 import type { AppEnv } from "../rest/http.js";
 import { ServiceError, badRequest, forbidden } from "../services/errors.js";
 import * as agents from "../services/agents.js";
@@ -439,6 +439,22 @@ const TOOLS: McpTool[] = [
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+
+// Cinturón y tirantes: si esta lista se desincroniza del prompt sugerido en la UI
+// (packages/shared MCP_TOOL_NAMES), es una señal de que faltó actualizar uno de los
+// dos lados. Solo advierte (no lanza) para no tumbar el server por un desfase temporal.
+if (process.env.NODE_ENV !== "production") {
+  const registered = [...TOOL_BY_NAME.keys()].sort();
+  const shared = [...MCP_TOOL_NAMES].sort();
+  const missingFromShared = registered.filter((n) => !shared.includes(n as (typeof MCP_TOOL_NAMES)[number]));
+  const missingFromServer = shared.filter((n) => !registered.includes(n));
+  if (missingFromShared.length || missingFromServer.length) {
+    console.warn(
+      "[mcp] TOOLS y @pemie/shared MCP_TOOL_NAMES desincronizados.",
+      { missingFromShared, missingFromServer }
+    );
+  }
+}
 
 /** Invoca una tool MCP en-proceso (p. ej. bot Telegram) sin HTTP. */
 export async function invokeMcpTool(

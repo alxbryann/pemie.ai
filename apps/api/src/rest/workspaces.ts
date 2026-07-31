@@ -417,6 +417,13 @@ export function workspaceRoutes() {
     return c.json({ agent }, 201);
   });
 
+  // ─── F4: Agentes del workspace (todos los proyectos) ───────────────
+  app.get("/:slug/agents", async (c) => {
+    const user = requireUser(c);
+    const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    return c.json({ agents: await agentsSvc.listAgentsInWorkspace(user.id, ws.id) });
+  });
+
   // ─── F4: API keys y AuditLog (por workspace, admin+) ───────────────
   app.get("/:slug/api-keys", async (c) => {
     const user = requireUser(c);

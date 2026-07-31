@@ -66,6 +66,19 @@ export async function listAgents(userId: string, projectId: string) {
   });
 }
 
+/** Lista los agentes de todos los proyectos del workspace (viewer+). */
+export async function listAgentsInWorkspace(userId: string, workspaceId: string) {
+  await requireMembership(userId, workspaceId);
+  return prisma.agent.findMany({
+    where: { project: { workspaceId } },
+    orderBy: [{ project: { name: "asc" } }, { createdAt: "asc" }],
+    include: {
+      _count: { select: { apiKeys: true } },
+      project: { select: { id: true, name: true, slug: true, key: true } },
+    },
+  });
+}
+
 // ─── API keys ──────────────────────────────────────────────────────────────
 
 export interface CreateApiKeyInput {
