@@ -56,14 +56,25 @@ export function resetAnalytics(): void {
   posthog.opt_out_capturing(); // sin tracking pre-login: vuelve al estado seguro
 }
 
-/** Registra un evento declarado en el catálogo. No-op si el SDK no está inicializado. */
+/**
+ * Registra un evento declarado en el catálogo. No-op si el SDK no está inicializado.
+ *
+ * El guardrail (`sanitizeAnalyticsProperties`) lanza en dev ante una instrumentación
+ * inválida — a propósito, para que se note. Pero eso nunca debe filtrarse al `catch`
+ * de negocio del caller (login, crear HU, etc.) y hacerle mostrar un error falso al
+ * usuario: se atrapa acá, se loguea fuerte, y el evento se descarta.
+ */
 export function track<E extends AnalyticsEvent>(
   event: E,
   properties?: AnalyticsEventProperties<E>
 ): void {
   if (!initialized) return;
-  const safeProperties = sanitizeAnalyticsProperties(event, properties, {
-    strict: import.meta.env.DEV,
-  });
-  posthog.capture(event, safeProperties);
+  try {
+    const safeProperties = sanitizeAnalyticsProperties(event, properties, {
+      strict: import.meta.env.DEV,
+    });
+    posthog.capture(event, safeProperties);
+  } catch (err) {
+    console.error(`[analytics] evento "${event}" descartado (instrumentación inválida):`, err);
+  }
 }

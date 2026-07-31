@@ -33,6 +33,12 @@ function getClient(): PostHog | null {
  * Registra un evento server-side para `userId`, si `analyticsEnabled` es true
  * y hay credencial configurada. No-op silencioso en cualquier otro caso —
  * nunca puede tumbar el flujo de Telegram (webhook o llamada REST) que lo dispara.
+ *
+ * El guardrail (`sanitizeAnalyticsProperties`) lanza fuera de prod ante una
+ * instrumentación inválida, a propósito. Ese throw se atrapa acá: varios
+ * callers (p. ej. `setLlmKey`) envuelven esta llamada en el mismo try/catch que
+ * su lógica de negocio, y dejar que se propague confundiría un bug de
+ * instrumentación con un fallo real de la operación.
  */
 export function trackServerEvent<E extends AnalyticsEvent>(
   analyticsEnabled: boolean,
@@ -43,6 +49,10 @@ export function trackServerEvent<E extends AnalyticsEvent>(
   if (!analyticsEnabled) return;
   const posthog = getClient();
   if (!posthog) return;
-  const safeProperties = sanitizeAnalyticsProperties(event, properties, { strict: !isProd });
-  posthog.capture({ distinctId: userId, event, properties: safeProperties });
+  try {
+    const safeProperties = sanitizeAnalyticsProperties(event, properties, { strict: !isProd });
+    posthog.capture({ distinctId: userId, event, properties: safeProperties });
+  } catch (err) {
+    console.error(`[analytics] evento "${event}" descartado (instrumentación inválida):`, err);
+  }
 }
