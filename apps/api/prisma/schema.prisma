@@ -36,6 +36,8 @@ model User {
   channelLinks ChannelLink[]
   channelConfig UserChannelConfig?
   channelLinkTokens ChannelLinkToken[]
+  channelMessages ChannelMessage[]
+  channelLlmCredentials ChannelLlmCredential[]
 
   @@map("users")
 }
@@ -457,24 +459,61 @@ model ChannelLink {
   @@map("channel_links")
 }
 
-/// Config del canal del usuario: MCP user-key + Anthropic BYOK cifrada.
+/// Config del canal del usuario: MCP user-key + proveedor/modelo activos + resumen rolling.
 model UserChannelConfig {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  apiKeyId             String   @unique
+  llmProvider          String   @default("anthropic")
+  /// Espejo del credential activo (compat); fuente de verdad: ChannelLlmCredential.
+  llmKeyCiphertext     String? // AES-GCM; null = falta configurar el proveedor activo
+  llmKeyLast4          String?
+  model                String   @default("claude-sonnet-5")
+  /// Resumen compacto del hilo fuera de la ventana de mensajes.
+  conversationSummary  String?
+  defaultProjectId     String?
+  enabled              Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey               ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  defaultProject       Project? @relation(fields: [defaultProjectId], references: [id], onDelete: SetNull)
+
+  @@map("user_channel_configs")
+}
+
+/// BYOK por proveedor (permite /proveedor en Telegram sin re-pegar la key).
+model ChannelLlmCredential {
   id               String   @id @default(cuid())
-  userId           String   @unique
-  apiKeyId         String   @unique
-  llmProvider      String   @default("anthropic")
-  llmKeyCiphertext String? // AES-GCM; null = falta configurar
-  llmKeyLast4      String?
-  model            String   @default("claude-sonnet-4-20250514")
-  defaultProjectId String?
-  enabled          Boolean  @default(true)
+  userId           String
+  provider         String // anthropic | openai | deepseek
+  llmKeyCiphertext String
+  llmKeyLast4      String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  apiKey           ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
-  defaultProject   Project? @relation(fields: [defaultProjectId], references: [id], onDelete: SetNull)
 
-  @@map("user_channel_configs")
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("channel_llm_credentials")
+}
+
+/// Historial corto del chat Telegram (cola deslizante; no guarda tool calls).
+model ChannelMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  // `createdAt` es el timestamp de transacción: el par user+assistant de un turno
+  // se inserta junto y comparte valor, así que no ordena dentro del par. `seq` da
+  // el orden monotónico que la API de chat exige (user antes que assistant).
+  seq       Int      @default(autoincrement())
+  provider  String   @default("telegram")
+  role      String // user | assistant
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider, seq])
+  @@map("channel_messages")
 }
 
 /// Token one-shot para t.me/Bot?start=<token>.
