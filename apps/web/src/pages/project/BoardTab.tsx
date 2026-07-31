@@ -77,12 +77,20 @@ function CardBody({ card }: { card: CardData }) {
       <Badge tone="neutral" mono>
         {card.type}
       </Badge>
-      {card.userStory && (
+      {card.userStory ? (
         <p className="mt-1.5 basis-full">
           <Badge tone="brand" mono>
             {card.userStory.key}
           </Badge>
         </p>
+      ) : (
+        card.type === "story" && (
+          <p className="mt-1.5 basis-full">
+            <Badge tone="neutral" mono>
+              Historia eliminada
+            </Badge>
+          </p>
+        )
       )}
       {card.assignee && (
         <p className="mt-1.5 flex basis-full items-center gap-1.5 text-caption text-ink-500">

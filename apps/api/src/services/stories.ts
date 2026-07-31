@@ -257,7 +257,15 @@ export async function deleteStory(userId: string, storyId: string) {
   const story = await getStoryById(storyId);
   if (!story) throw notFound("HU no encontrada");
   await projectWithAccess(userId, story.projectId, "member");
-  await prisma.userStory.delete({ where: { id: story.id } });
+  try {
+    await prisma.userStory.delete({ where: { id: story.id } });
+  } catch (err) {
+    // Carrera: otro borrado concurrente ya se la llevó entre el findUnique y
+    // el delete. Devolver 404 (no encontrada), no un 500 genérico.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025")
+      throw notFound("HU no encontrada");
+    throw err;
+  }
   return { ok: true };
 }
 
