@@ -25,12 +25,15 @@ interface McpContext {
   projectId: string | null;
 }
 
-/** projectId opcional en schema; obligatorio en runtime si la key es amplia. */
+/**
+ * projectId opcional en schema; obligatorio en runtime si la key es amplia.
+ * La descripción se repite en casi todas las tools y viaja en cada prompt, así
+ * que dice solo lo que el agente necesita para decidir si mandarlo o no.
+ */
 const PROJECT_ID_PROP = {
   projectId: {
     type: "string",
-    description:
-      "ID del proyecto. Obligatorio con keys workspace/user; opcional (e ignorado si no coincide) con key de proyecto.",
+    description: "ID del proyecto. Obligatorio con keys de workspace o usuario.",
   },
 };
 
@@ -472,13 +475,43 @@ export async function invokeMcpTool(
   return result;
 }
 
-export function listMcpToolDefs() {
-  return TOOLS.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
-    scope: t.scope,
-  }));
+/** Copia del schema sin `projectId` (una key de proyecto ya lo tiene fijado). */
+function withoutProjectId(schema: Record<string, unknown>): Record<string, unknown> {
+  const properties = schema.properties as Record<string, unknown> | undefined;
+  if (!properties || !("projectId" in properties)) return schema;
+  const { projectId: _pinned, ...rest } = properties;
+  const next: Record<string, unknown> = { ...schema, properties: rest };
+  const required = (schema.required as string[] | undefined)?.filter((r) => r !== "projectId");
+  if (required) {
+    if (required.length) next.required = required;
+    else delete next.required;
+  }
+  return next;
+}
+
+/**
+ * Definiciones de tools para un cliente LLM. Con `key`, devuelve solo lo que esa
+ * key puede ejecutar de verdad:
+ *
+ * - Oculta las tools cuyo scope no tiene. Mandárselas solo gasta prompt en cada
+ *   ronda e invita al modelo a llamadas que terminan en 403.
+ * - Omite `projectId` si la key es de proyecto: ahí el proyecto ya está fijado y
+ *   mandar uno distinto es un 403 (ver agents.resolveProjectForKey).
+ *
+ * Esto es una optimización del catálogo, NO un control de acceso: `tools/call`
+ * sigue exigiendo el scope aunque alguien invoque una tool que no vio listada.
+ */
+export function listMcpToolDefs(key?: ApiKey) {
+  const scopes = key ? (key.scopes as ApiScope[]) : null;
+  const projectPinned = key ? (key.scopeLevel ?? "project") === "project" : false;
+  return TOOLS.filter((t) => t.scope === null || scopes === null || scopes.includes(t.scope)).map(
+    (t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: projectPinned ? withoutProjectId(t.inputSchema) : t.inputSchema,
+      scope: t.scope,
+    })
+  );
 }
 
 // ─── Registro de resources ─────────────────────────────────────────────────

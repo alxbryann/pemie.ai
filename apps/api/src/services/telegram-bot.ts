@@ -528,7 +528,9 @@ async function runAnthropicTurn(
   const apiKey = decryptSecret(session.config.llmKeyCiphertext!);
   const model = resolveModel(session);
 
-  const toolDefs = listMcpToolDefs().map((t) => ({
+  // Filtrado por la key de la sesión: el bloque de tools viaja en CADA ronda,
+  // así que mandar tools que esta key no puede usar se paga otra vez cada vez.
+  const toolDefs = listMcpToolDefs(session.config.apiKey).map((t) => ({
     name: t.name,
     description: t.description,
     input_schema: t.inputSchema,
@@ -627,7 +629,7 @@ async function runOpenAiCompatTurn(
   const model = resolveModel(session);
   const base = OPENAI_COMPAT_BASE[provider];
 
-  const tools = listMcpToolDefs().map((t) => ({
+  const tools = listMcpToolDefs(session.config.apiKey).map((t) => ({
     type: "function" as const,
     function: {
       name: t.name,
