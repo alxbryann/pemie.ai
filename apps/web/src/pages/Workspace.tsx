@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Role } from "@pemie/shared";
+import { API_SCOPES, type Role } from "@pemie/shared";
 import {
   api,
   analyticsFailureReason,
@@ -9,22 +9,28 @@ import {
   type ProjectSummary,
   type Member,
   type Invitation,
+  type WorkspaceAgent,
+  type ApiKeyPublic,
 } from "../lib/api.js";
 import { track } from "../lib/analytics/index.js";
 import {
   Badge,
   Button,
   Card,
+  CodeBlock,
   DangerZone,
   EmptyState,
   ErrorText,
   Field,
   Input,
+  Modal,
+  Notice,
   PageHeader,
   Select,
   Skeleton,
   SkeletonCard,
   SkeletonList,
+  ToggleChip,
   type BadgeTone,
 } from "../components/ui.js";
 
@@ -75,8 +81,7 @@ export default function Workspace() {
 
       <div className="space-y-8">
         <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
-        <AgentsSection slug={slug} />
-        <TeamSection slug={slug} canManage={canManage} />
+        <TeamSection slug={slug} projects={projects} canManage={canManage} />
         {/* `key` por workspace: al cambiar de workspace se descarta el borrador de
             nombre y el texto de confirmación del anterior. */}
         {canManage && <SettingsSection key={ws.id} ws={ws} onRenamed={setWs} />}
@@ -113,26 +118,6 @@ function WorkspaceSkeleton() {
         </section>
       </div>
     </div>
-  );
-}
-
-function AgentsSection({ slug }: { slug: string }) {
-  const navigate = useNavigate();
-  return (
-    <section>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-h3 text-ink-900">Agentes</h2>
-        <Button variant="secondary" size="sm" onClick={() => navigate(`/w/${slug}/agents`)}>
-          Abrir hub
-        </Button>
-      </div>
-      <Card>
-        <p className="text-body-sm text-ink-600">
-          MCP, API keys, canal Telegram y el audit de lo que hacen los agentes en este
-          workspace.
-        </p>
-      </Card>
-    </section>
   );
 }
 
@@ -375,16 +360,24 @@ function invStatusTone(status: string): BadgeTone {
   return "warning";
 }
 
-function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) {
+function TeamSection({
+  slug,
+  projects,
+  canManage,
+}: {
+  slug: string;
+  projects: ProjectSummary[];
+  canManage: boolean;
+}) {
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
+  const [keys, setKeys] = useState<ApiKeyPublic[]>([]);
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [roleErrors, setRoleErrors] = useState<Record<string, string>>({});
+  const [addOpen, setAddOpen] = useState(false);
 
   function inviteLink(token: string) {
     return `${window.location.origin}/invite/${token}`;
@@ -397,11 +390,19 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
   }
 
   async function load() {
-    const membersRes = await api.workspaces.members(slug);
+    const [membersRes, agentsRes] = await Promise.all([
+      api.workspaces.members(slug),
+      api.agents.listWorkspace(slug),
+    ]);
     setMembers(membersRes.members);
+    setAgents(agentsRes.agents);
     if (canManage) {
-      const invRes = await api.workspaces.invitations(slug);
+      const [invRes, keysRes] = await Promise.all([
+        api.workspaces.invitations(slug),
+        api.apiKeys.list(slug),
+      ]);
       setInvitations(invRes.invitations);
+      setKeys(keysRes.apiKeys);
     }
   }
 
@@ -410,22 +411,17 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, canManage]);
 
-  async function onInvite(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
+  async function invitePerson(email: string) {
     try {
       const res = await api.workspaces.invite(slug, email);
       // Nunca el email completo: si hace falta segmentar, dominio del correo.
       track("workspace_member_invited", { role: res.invitation.role, email_domain: email.split("@")[1] ?? "" });
       setLastInvite(res.invitation);
-      setEmail("");
       await load();
+      return res.invitation;
     } catch (err) {
       track("workspace_member_invited_failed", { reason: analyticsFailureReason(err) });
-      setError(err instanceof ApiError ? err.message : "No se pudo invitar");
-    } finally {
-      setBusy(false);
+      throw err;
     }
   }
 
@@ -456,76 +452,143 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
 
   return (
     <section>
-      <h2 className="mb-4 text-h3 text-ink-900">Equipo</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-h3 text-ink-900">Equipo</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={`/w/${slug}/agents`}
+            className="inline-flex items-center px-2 py-1 text-body-sm font-medium text-blue-700 hover:underline"
+          >
+            Abrir hub
+          </Link>
+          {canManage ? (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              Añadir al equipo
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
       <Card>
-        <ul className="divide-y divide-line-100">
-          {members.map((m) => {
-            const editable = canManage && m.role !== "owner";
-            return (
-              <li
-                key={m.membershipId}
-                className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
-              >
-                <div className="grid h-8 w-8 flex-none place-items-center rounded-pill bg-surface-100 text-caption font-semibold text-ink-700">
-                  {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body-sm font-medium text-ink-900">
-                    {m.user.name ?? m.user.email}
-                  </p>
-                  <p className="truncate font-mono text-caption text-ink-400">{m.user.email}</p>
-                </div>
-                {editable ? (
-                  <div className="flex flex-none flex-col items-end gap-1">
-                    <Select
-                      aria-label={`Rol de ${m.user.name ?? m.user.email}`}
-                      value={m.role}
-                      disabled={roleBusyId === m.membershipId}
-                      onChange={(e) => onRoleChange(m.membershipId, e.target.value as Role)}
-                      className="w-auto py-1.5 font-mono text-caption"
-                    >
-                      {ASSIGNABLE_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </Select>
-                    {roleErrors[m.membershipId] ? (
-                      <ErrorText>{roleErrors[m.membershipId]}</ErrorText>
-                    ) : null}
-                  </div>
-                ) : (
-                  <Badge tone="neutral" mono>{m.role}</Badge>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        {members.length === 0 && agents.length === 0 ? (
+          <EmptyState
+            title="Aún no hay nadie más en el equipo"
+            description="Añade una persona por correo o crea un agente ligado a un proyecto."
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => setAddOpen(true)}>
+                  Añadir al equipo
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h3 className="mb-2 text-body-sm font-semibold text-ink-600">Personas</h3>
+              {members.length === 0 ? (
+                <p className="text-body-sm text-ink-400">Todavía no hay personas invitadas.</p>
+              ) : (
+                <ul className="divide-y divide-line-100">
+                  {members.map((m) => {
+                    const editable = canManage && m.role !== "owner";
+                    return (
+                      <li
+                        key={m.membershipId}
+                        className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
+                      >
+                        <div className="grid h-8 w-8 flex-none place-items-center rounded-pill bg-surface-100 text-caption font-semibold text-ink-700">
+                          {(m.user.name ?? m.user.email).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body-sm font-medium text-ink-900">
+                            {m.user.name ?? m.user.email}
+                          </p>
+                          <p className="truncate font-mono text-caption text-ink-400">{m.user.email}</p>
+                        </div>
+                        {editable ? (
+                          <div className="flex flex-none flex-col items-end gap-1">
+                            <Select
+                              aria-label={`Rol de ${m.user.name ?? m.user.email}`}
+                              value={m.role}
+                              disabled={roleBusyId === m.membershipId}
+                              onChange={(e) => onRoleChange(m.membershipId, e.target.value as Role)}
+                              className="w-auto py-1.5 font-mono text-caption"
+                            >
+                              {ASSIGNABLE_ROLES.map((role) => (
+                                <option key={role} value={role}>
+                                  {role}
+                                </option>
+                              ))}
+                            </Select>
+                            {roleErrors[m.membershipId] ? (
+                              <ErrorText>{roleErrors[m.membershipId]}</ErrorText>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <Badge tone="neutral" mono>{m.role}</Badge>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-body-sm font-semibold text-ink-600">Agentes</h3>
+              {agents.length === 0 ? (
+                <p className="text-body-sm text-ink-400">Todavía no hay agentes registrados.</p>
+              ) : (
+                <ul className="divide-y divide-line-100">
+                  {agents.map((agent) => {
+                    const latestKey = keys
+                      .filter((key) => key.agentId === agent.id)
+                      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+                    return (
+                      <li
+                        key={agent.id}
+                        className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
+                      >
+                        <div className="grid h-8 w-8 flex-none place-items-center rounded-md bg-blue-100 text-caption font-semibold text-blue-700">
+                          {agent.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body-sm font-medium text-ink-900">{agent.name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <Badge tone="neutral" mono>{agent.project.slug}</Badge>
+                            {canManage ? (
+                              latestKey ? (
+                                <Badge tone="brand" mono>{latestKey.scopeLevel}</Badge>
+                              ) : (
+                                <Badge tone="warning" mono>sin API key</Badge>
+                              )
+                            ) : null}
+                            <span className="font-mono text-caption text-ink-400">
+                              {agent._count.apiKeys} {agent._count.apiKeys === 1 ? "key" : "keys"}
+                            </span>
+                          </div>
+                        </div>
+                        <Link
+                          to={`/w/${slug}/agents`}
+                          className="shrink-0 text-caption font-medium text-blue-700 hover:underline"
+                        >
+                          Abrir hub
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
 
-      {canManage && (
+      {canManage && (lastInvite || invitations.length > 0) ? (
         <Card className="mt-4">
-          <h3 className="mb-3 text-body-sm font-semibold text-ink-600">Invitar por email</h3>
-          <form onSubmit={onInvite} className="flex items-end gap-3">
-            <div className="flex-1">
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="persona@empresa.com"
-                required
-              />
-            </div>
-            <Button type="submit" disabled={busy}>
-              {busy ? "Invitando…" : "Invitar"}
-            </Button>
-          </form>
-          <div className="mt-2">
-            <ErrorText>{error}</ErrorText>
-          </div>
-
-          {lastInvite && (
-            <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
+          {lastInvite ? (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
               <p className="text-body-sm text-ink-700">
                 {lastInvite.emailDelivered
                   ? `Invitación enviada por correo a ${lastInvite.email}.`
@@ -533,7 +596,7 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
                     ? `Invitación enviada al buzón de prueba (Ethereal). No llega al inbox real de ${lastInvite.email}, pero puedes ver el correo aquí:`
                     : `Invitación creada — comparte este enlace con ${lastInvite.email}:`}
               </p>
-              {lastInvite.emailPreviewUrl && (
+              {lastInvite.emailPreviewUrl ? (
                 <a
                   href={lastInvite.emailPreviewUrl}
                   target="_blank"
@@ -542,49 +605,307 @@ function TeamSection({ slug, canManage }: { slug: string; canManage: boolean }) 
                 >
                   Ver correo enviado →
                 </a>
-              )}
+              ) : null}
               <div className="mt-2 flex items-center gap-2">
                 <code className="min-w-0 flex-1 truncate rounded bg-white px-2 py-1.5 font-mono text-caption text-ink-700">
                   {inviteLink(lastInvite.token)}
                 </code>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => copyLink(lastInvite.id, lastInvite.token)}
-                >
+                <Button variant="secondary" size="sm" onClick={() => copyLink(lastInvite.id, lastInvite.token)}>
                   {copiedId === lastInvite.id ? "copiado" : "copiar link"}
                 </Button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {invitations.length > 0 && (
-            <ul className="mt-4 divide-y divide-line-100 border-t border-line-100 pt-3">
+          {invitations.length > 0 ? (
+            <ul className={`${lastInvite ? "mt-4 border-t border-line-100 pt-3" : ""} divide-y divide-line-100`}>
               {invitations.map((inv) => (
                 <li key={inv.id} className="flex items-center gap-3 py-2.5">
-                  <span className="min-w-0 flex-1 truncate font-mono text-body-sm text-ink-900">
-                    {inv.email}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-body-sm text-ink-900">{inv.email}</span>
                   <Badge tone={invStatusTone(inv.status)} dot>{inv.status}</Badge>
                   <Badge tone="neutral" mono>{inv.role}</Badge>
-                  {inv.status === "pending" && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => copyLink(inv.id, inv.token)}
-                    >
+                  {inv.status === "pending" ? (
+                    <Button variant="secondary" size="sm" onClick={() => copyLink(inv.id, inv.token)}>
                       {copiedId === inv.id ? "copiado" : "copiar link"}
                     </Button>
-                  )}
-                  <Button variant="danger" size="sm" onClick={() => onRevoke(inv.id)}>
-                    revocar
-                  </Button>
+                  ) : null}
+                  <Button variant="danger" size="sm" onClick={() => onRevoke(inv.id)}>revocar</Button>
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
         </Card>
-      )}
+      ) : null}
+
+      {canManage && addOpen ? (
+        <AddTeamModal
+          slug={slug}
+          projects={projects}
+          onClose={() => setAddOpen(false)}
+          onInvite={invitePerson}
+          onChanged={load}
+        />
+      ) : null}
     </section>
+  );
+}
+
+type AddMode = "choose" | "person" | "agent" | "credential";
+
+function AddTeamModal({
+  slug,
+  projects,
+  onClose,
+  onInvite,
+  onChanged,
+}: {
+  slug: string;
+  projects: ProjectSummary[];
+  onClose: () => void;
+  onInvite: (email: string) => Promise<Invitation>;
+  onChanged: () => Promise<void>;
+}) {
+  const [mode, setMode] = useState<AddMode>("choose");
+  const [email, setEmail] = useState("");
+  const [agentProjectSlug, setAgentProjectSlug] = useState(projects[0]?.slug ?? "");
+  const [agentName, setAgentName] = useState("");
+  const [scopes, setScopes] = useState<string[]>([...API_SCOPES]);
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [confirmedSaved, setConfirmedSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  const selectedProject = projects.find((project) => project.slug === agentProjectSlug);
+  const isCredential = mode === "credential";
+  const canCreateAgent = Boolean(
+    selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && !busy
+  );
+
+  function toggleScope(scope: string) {
+    setScopes((current) =>
+      current.includes(scope) ? current.filter((item) => item !== scope) : [...current, scope]
+    );
+  }
+
+  async function submitPerson(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await onInvite(email);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo invitar");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createOrRetryAgent(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canCreateAgent) return;
+    setBusy(true);
+    setError(null);
+    setKeyError(null);
+
+    let agentId = createdAgentId;
+    try {
+      if (!agentId) {
+        const result = await api.agents.create(slug, agentProjectSlug, agentName.trim());
+        agentId = result.agent.id;
+        setCreatedAgentId(agentId);
+        track("agent_registered");
+        try {
+          await onChanged();
+        } catch {
+          // La creación fue exitosa; el siguiente load recuperará el agente.
+        }
+      }
+
+      try {
+        const result = await api.apiKeys.create(slug, {
+          name: agentName.trim(),
+          scopeLevel: "project",
+          projectId: selectedProject?.id,
+          agentId,
+          scopes,
+        });
+        track("api_key_created", { scope_level: "project" });
+        setNewKey(result.key);
+        setConfirmedSaved(false);
+        setMode("credential");
+        try {
+          await onChanged();
+        } catch {
+          // La key ya existe y se muestra aquí; el listado se actualizará al cerrar.
+        }
+      } catch (err) {
+        track("api_key_created_failed", { reason: analyticsFailureReason(err) });
+        try {
+          await onChanged();
+        } catch {
+          // El mensaje mantiene el estado parcial aunque el refresco falle.
+        }
+        setKeyError(err instanceof ApiError ? err.message : "No se pudo crear la API key");
+      }
+    } catch (err) {
+      track("agent_registered_failed", { reason: analyticsFailureReason(err) });
+      setError(err instanceof ApiError ? err.message : "No se pudo crear el agente");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={isCredential ? "Guarda la API key" : "Añadir al equipo"}
+      onClose={onClose}
+      wide={mode === "agent" || mode === "credential"}
+      dismissible={!isCredential}
+    >
+      {mode === "choose" ? (
+        <div>
+          <p className="text-body-sm text-ink-600">Elige qué tipo de integrante quieres añadir.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setMode("person")}
+              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-50 focus-visible:outline-none focus-visible:shadow-focus"
+            >
+              <span className="text-body font-semibold text-ink-900">Persona</span>
+              <span className="mt-1 block text-body-sm text-ink-500">Invítala por correo; acepta cuando quiera.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("agent")}
+              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-50 focus-visible:outline-none focus-visible:shadow-focus"
+            >
+              <span className="text-body font-semibold text-ink-900">Agente</span>
+              <span className="mt-1 block text-body-sm text-ink-500">Vive en un proyecto y recibe una API key.</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === "person" ? (
+        <form onSubmit={submitPerson} className="space-y-4">
+          <Field label="Correo de la persona" hint="Le enviaremos una invitación para unirse al workspace.">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="persona@empresa.com"
+              required
+              autoFocus
+            />
+          </Field>
+          <ErrorText>{error}</ErrorText>
+          <div className="flex justify-between gap-2">
+            <Button type="button" variant="ghost" onClick={() => setMode("choose")}>Atrás</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Invitando…" : "Enviar invitación"}</Button>
+          </div>
+        </form>
+      ) : null}
+
+      {mode === "agent" ? (
+        projects.length === 0 ? (
+          <EmptyState
+            title="Crea un proyecto primero"
+            description="Cada agente pertenece a un proyecto. Cierra este diálogo, crea uno y vuelve a intentarlo."
+            action={<Button variant="secondary" size="sm" onClick={onClose}>Cerrar</Button>}
+          />
+        ) : (
+          <form onSubmit={createOrRetryAgent} className="space-y-4">
+            {createdAgentId ? (
+              <Notice tone="success">
+                <p className="font-semibold">Agente creado</p>
+                <p className="mt-1">La key se puede reintentar sin crear otro agente.</p>
+              </Notice>
+            ) : null}
+            {keyError ? (
+              <Notice tone="danger">
+                <p>El agente quedó creado, pero la primera API key falló.</p>
+                <p className="mt-1">{keyError} Reintentar solo crea la key pendiente.</p>
+              </Notice>
+            ) : null}
+            <Field label="Proyecto" hint="El agente quedará asociado a este proyecto.">
+              <Select
+                value={agentProjectSlug}
+                onChange={(e) => setAgentProjectSlug(e.target.value)}
+                disabled={Boolean(createdAgentId) || busy}
+                required
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.slug}>{project.name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Nombre del agente"
+              hint={createdAgentId ? "El nombre queda fijo para poder reintentar la misma key." : "También será el nombre de la primera API key."}
+            >
+              <Input
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                placeholder="Ej: hermes"
+                minLength={2}
+                required
+                disabled={Boolean(createdAgentId) || busy}
+                autoFocus
+              />
+            </Field>
+            <Field label="Alcance" hint="Los agentes recién creados empiezan ligados a su proyecto.">
+              <Badge tone="brand" mono>project</Badge>
+            </Field>
+            <Field label="Permisos de la primera API key" hint="Puedes ajustar estos permisos más adelante desde el hub.">
+              <div className="flex flex-wrap gap-2">
+                {API_SCOPES.map((scope) => (
+                  <ToggleChip
+                    key={scope}
+                    checked={scopes.includes(scope)}
+                    onChange={() => toggleScope(scope)}
+                  >
+                    {scope}
+                  </ToggleChip>
+                ))}
+              </div>
+            </Field>
+            <ErrorText>{error}</ErrorText>
+            <div className="flex justify-between gap-2">
+              <Button type="button" variant="ghost" onClick={() => setMode("choose")} disabled={busy || Boolean(createdAgentId)}>
+                Atrás
+              </Button>
+              <Button type="submit" disabled={!canCreateAgent}>
+                {busy ? "Guardando…" : createdAgentId ? "Reintentar API key" : "Crear agente y API key"}
+              </Button>
+            </div>
+          </form>
+        )
+      ) : null}
+
+      {mode === "credential" && newKey ? (
+        <div className="space-y-4">
+          <Notice tone="warning">
+            Esta key solo se muestra ahora. Guárdala antes de cerrar este diálogo.
+          </Notice>
+          <CodeBlock title="API key">{newKey}</CodeBlock>
+          <label className="flex cursor-pointer items-start gap-2 text-body-sm text-ink-700">
+            <input
+              type="checkbox"
+              checked={confirmedSaved}
+              onChange={(e) => setConfirmedSaved(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-line-200 text-blue-600 focus:ring-blue-600"
+            />
+            <span>Guardé la key en un lugar seguro o la copié manualmente.</span>
+          </label>
+          <p className="text-caption text-ink-400">El texto de la key se puede seleccionar si el portapapeles no está disponible.</p>
+          <Button type="button" className="w-full" disabled={!confirmedSaved} onClick={onClose}>
+            Ya la guardé, cerrar
+          </Button>
+        </div>
+      ) : null}
+    </Modal>
   );
 }

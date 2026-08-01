@@ -557,24 +557,26 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  dismissible = true,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  dismissible?: boolean;
 }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (dismissible && e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [dismissible, onClose]);
 
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4"
-      onClick={onClose}
+      onClick={dismissible ? onClose : undefined}
       role="presentation"
     >
       <div
@@ -588,13 +590,15 @@ export function Modal({
       >
         <div className="flex items-center justify-between gap-3 border-b border-line-100 p-4">
           <h3 className="min-w-0 truncate text-h4 text-ink-900">{title}</h3>
-          <button
-            type="button"
-            className="shrink-0 text-body text-ink-400 transition-colors hover:text-ink-900"
-            onClick={onClose}
-          >
-            Cerrar
-          </button>
+          {dismissible ? (
+            <button
+              type="button"
+              className="shrink-0 text-body text-ink-400 transition-colors hover:text-ink-900"
+              onClick={onClose}
+            >
+              Cerrar
+            </button>
+          ) : null}
         </div>
         <div className="max-h-[calc(85vh-3.5rem)] overflow-y-auto overflow-x-hidden p-4">
           <div className="min-w-0">{children}</div>
