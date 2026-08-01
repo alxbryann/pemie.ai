@@ -354,9 +354,9 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Repos vinculados */}
       <Card>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-h4 text-ink-900">Repositorios vinculados</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {repos.length > 0 && (
               <Button variant="secondary" size="sm" onClick={sync} disabled={syncing}>
                 {syncing ? "Sincronizando…" : "Sincronizar commits"}
