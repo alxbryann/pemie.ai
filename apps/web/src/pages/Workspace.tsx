@@ -32,6 +32,7 @@ import {
   SkeletonCard,
   SkeletonList,
   ToggleChip,
+  TrashIcon,
   type BadgeTone,
 } from "../components/ui.js";
 
@@ -355,6 +356,20 @@ function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws)
   );
 }
 
+/** Papelera de fila: mismo gesto de borrado para personas y agentes. */
+function IconTrashButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="grid h-8 w-8 flex-none place-items-center rounded-md text-ink-400 transition-colors hover:bg-red-100 hover:text-red-600 focus-visible:shadow-focus focus-visible:outline-none"
+      aria-label={label}
+      onClick={onClick}
+    >
+      <TrashIcon />
+    </button>
+  );
+}
+
 function invStatusTone(status: string): BadgeTone {
   if (status === "accepted") return "success";
   if (status === "expired") return "danger";
@@ -381,6 +396,9 @@ function TeamSection({
   const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const [removeErrors, setRemoveErrors] = useState<Record<string, string>>({});
+  const [agentBusyId, setAgentBusyId] = useState<string | null>(null);
+  const [agentConfirmId, setAgentConfirmId] = useState<string | null>(null);
+  const [agentErrors, setAgentErrors] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("choose");
 
@@ -477,28 +495,38 @@ function TeamSection({
     }
   }
 
+  // Borrar el agente revoca sus API keys en el backend: hay que recargar la lista
+  // de keys, no solo quitar la fila del agente del estado local.
+  async function onDeleteAgent(agentId: string) {
+    setAgentBusyId(agentId);
+    setAgentErrors((prev) => ({ ...prev, [agentId]: "" }));
+    try {
+      await api.agents.remove(slug, agentId);
+      track("agent_deleted");
+      setAgentConfirmId(null);
+      await load();
+    } catch (err) {
+      track("agent_deleted_failed", { reason: analyticsFailureReason(err) });
+      setAgentErrors((prev) => ({
+        ...prev,
+        [agentId]: err instanceof ApiError ? err.message : "No se pudo eliminar el agente",
+      }));
+    } finally {
+      setAgentBusyId(null);
+    }
+  }
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-h3 text-ink-900">Equipo</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to={`/w/${slug}/agents`}
-            className="inline-flex items-center px-2 py-1 text-body-sm font-medium text-blue-700 hover:underline"
-          >
-            Abrir hub
-          </Link>
-          {canManage ? (
-            <>
-              <Button variant="secondary" size="sm" onClick={() => openAdd("person")}>
-                Añadir persona
-              </Button>
-              <Button size="sm" onClick={() => openAdd("choose")}>
-                Añadir al equipo
-              </Button>
-            </>
-          ) : null}
-        </div>
+        {/* Una sola acción en la cabecera: el modal ya deja elegir persona o agente,
+            y el hub sigue accesible desde cualquier proyecto. */}
+        {canManage ? (
+          <Button size="sm" onClick={() => openAdd("choose")}>
+            Añadir al equipo
+          </Button>
+        ) : null}
       </div>
 
       <Card>
@@ -567,7 +595,7 @@ function TeamSection({
                                     disabled={removeBusy}
                                     onClick={() => onRemoveMember(m.membershipId)}
                                   >
-                                    Confirmar
+                                    {removeBusy ? "Quitando…" : "Confirmar"}
                                   </Button>
                                   <Button
                                     variant="ghost"
@@ -579,13 +607,10 @@ function TeamSection({
                                   </Button>
                                 </>
                               ) : (
-                                <Button
-                                  variant="danger"
-                                  size="sm"
+                                <IconTrashButton
+                                  label={`Quitar a ${m.user.name ?? m.user.email} del workspace`}
                                   onClick={() => setRemoveConfirmId(m.membershipId)}
-                                >
-                                  Quitar
-                                </Button>
+                                />
                               )}
                             </div>
                             {removeErrors[m.membershipId] ? (
@@ -636,12 +661,47 @@ function TeamSection({
                             </span>
                           </div>
                         </div>
-                        <Link
-                          to={`/w/${slug}/agents`}
-                          className="shrink-0 text-caption font-medium text-blue-700 hover:underline"
-                        >
-                          Abrir hub
-                        </Link>
+                        {canManage ? (
+                          <div className="flex flex-none flex-col items-end gap-1">
+                            {agentConfirmId === agent.id ? (
+                              <>
+                                <p className="text-caption text-ink-500">
+                                  {agent._count.apiKeys > 0
+                                    ? `Se revocan sus ${agent._count.apiKeys} ${
+                                        agent._count.apiKeys === 1 ? "key" : "keys"
+                                      }.`
+                                    : "Dejará de conectarse por MCP."}
+                                </p>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    disabled={agentBusyId === agent.id}
+                                    onClick={() => onDeleteAgent(agent.id)}
+                                  >
+                                    {agentBusyId === agent.id ? "Eliminando…" : "Confirmar"}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={agentBusyId === agent.id}
+                                    onClick={() => setAgentConfirmId(null)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </>
+                            ) : (
+                              <IconTrashButton
+                                label={`Eliminar el agente ${agent.name}`}
+                                onClick={() => setAgentConfirmId(agent.id)}
+                              />
+                            )}
+                            {agentErrors[agent.id] ? (
+                              <ErrorText>{agentErrors[agent.id]}</ErrorText>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </li>
                     );
                   })}

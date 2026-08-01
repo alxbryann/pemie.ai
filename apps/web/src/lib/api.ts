@@ -498,6 +498,8 @@ export const api = {
       get<{ agents: WorkspaceAgent[] }>(`/api/workspaces/${w}/agents`),
     create: (w: string, p: string, name: string) =>
       post<{ agent: Agent }>(`${pp(w, p)}/agents`, { name }),
+    remove: (w: string, agentId: string) =>
+      del<{ ok: true }>(`/api/workspaces/${w}/agents/${agentId}`),
   },
   apiKeys: {
     list: (w: string) => get<{ apiKeys: ApiKeyPublic[] }>(`/api/workspaces/${w}/api-keys`),

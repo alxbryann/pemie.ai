@@ -80,6 +80,35 @@ export async function listAgentsInWorkspace(userId: string, workspaceId: string)
   });
 }
 
+/**
+ * Elimina un agente y revoca sus API keys (admin+, igual que revocar una key
+ * suelta). Las keys se borran en la misma transacción: una key huérfana seguiría
+ * autenticando sin agente detrás. Los informes que publicó se conservan —su
+ * `agentId` queda en null— porque el historial del proyecto no es del agente.
+ */
+export async function deleteAgent(userId: string, agentId: string) {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    include: { project: { select: { workspaceId: true } } },
+  });
+  if (!agent) throw notFound("Agente no encontrado");
+  await requireMembership(userId, agent.project.workspaceId, "admin");
+
+  await prisma.$transaction([
+    prisma.apiKey.deleteMany({ where: { agentId } }),
+    prisma.agent.delete({ where: { id: agentId } }),
+  ]);
+  await audit({
+    workspaceId: agent.project.workspaceId,
+    actorType: "user",
+    actorId: userId,
+    action: "agent.delete",
+    entity: "Agent",
+    entityId: agentId,
+  });
+  return { ok: true };
+}
+
 // ─── API keys ──────────────────────────────────────────────────────────────
 
 export interface CreateApiKeyInput {

@@ -64,6 +64,8 @@ export const ANALYTICS_EVENTS = {
   // ─── Agentes / API keys ──────────────────────────────────────────────
   agent_registered: [],
   agent_registered_failed: ["reason"],
+  agent_deleted: [],
+  agent_deleted_failed: ["reason"],
   // Nunca el valor de la key, solo metadata.
   api_key_created: ["scope_level"],
   api_key_created_failed: ["reason"],
