@@ -149,6 +149,41 @@ export function ToggleChip({
   );
 }
 
+/** Confirmación puntual con el mismo foco visible que el resto del sistema. */
+export function Checkbox({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 text-body-sm text-ink-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden
+        className={`mt-0.5 grid h-4 w-4 flex-none place-items-center rounded-sm border text-white transition-colors peer-focus-visible:shadow-focus ${
+          checked ? "border-blue-600 bg-blue-600" : "border-line-200 bg-surface-0"
+        }`}
+      >
+        {checked ? (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="m1.8 5.2 2 2 4.4-4.4" />
+          </svg>
+        ) : null}
+      </span>
+      <span>{children}</span>
+    </label>
+  );
+}
+
 /* --------------------------------- display -------------------------------- */
 
 const CARD_PADDING = { sm: "p-3", md: "p-6", none: "" };

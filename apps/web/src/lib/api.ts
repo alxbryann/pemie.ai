@@ -397,6 +397,8 @@ export const api = {
     members: (slug: string) => get<{ members: Member[] }>(`/api/workspaces/${slug}/members`),
     updateMemberRole: (slug: string, membershipId: string, role: Role) =>
       patch<{ member: Member }>(`/api/workspaces/${slug}/members/${membershipId}`, { role }),
+    removeMember: (slug: string, membershipId: string) =>
+      del<{ ok: true }>(`/api/workspaces/${slug}/members/${membershipId}`),
     invitations: (slug: string) =>
       get<{ invitations: Invitation[] }>(`/api/workspaces/${slug}/invitations`),
     invite: (slug: string, email: string, role?: Role) =>

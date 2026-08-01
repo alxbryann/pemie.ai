@@ -187,6 +187,12 @@ export function workspaceRoutes() {
     return c.json({ member });
   });
 
+  app.delete("/:slug/members/:membershipId", async (c) => {
+    const user = requireUser(c);
+    const ws = await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    return c.json(await tenancy.removeMember(user.id, ws.id, c.req.param("membershipId")));
+  });
+
   // ─── Invitaciones (owner/admin) ────────────────────────────────────
   app.get("/:slug/invitations", async (c) => {
     const user = requireUser(c);

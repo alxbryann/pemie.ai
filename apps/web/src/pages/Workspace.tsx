@@ -17,6 +17,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   CodeBlock,
   DangerZone,
   EmptyState,
@@ -377,7 +378,16 @@ function TeamSection({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [roleErrors, setRoleErrors] = useState<Record<string, string>>({});
+  const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
+  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
+  const [removeErrors, setRemoveErrors] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState<AddMode>("choose");
+
+  function openAdd(mode: AddMode) {
+    setAddMode(mode);
+    setAddOpen(true);
+  }
 
   function inviteLink(token: string) {
     return `${window.location.origin}/invite/${token}`;
@@ -450,6 +460,23 @@ function TeamSection({
     }
   }
 
+  async function onRemoveMember(membershipId: string) {
+    setRemoveBusyId(membershipId);
+    setRemoveErrors((prev) => ({ ...prev, [membershipId]: "" }));
+    try {
+      await api.workspaces.removeMember(slug, membershipId);
+      setMembers((prev) => prev.filter((member) => member.membershipId !== membershipId));
+      setRemoveConfirmId(null);
+    } catch (err) {
+      setRemoveErrors((prev) => ({
+        ...prev,
+        [membershipId]: err instanceof ApiError ? err.message : "No se pudo quitar al miembro",
+      }));
+    } finally {
+      setRemoveBusyId(null);
+    }
+  }
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -462,9 +489,14 @@ function TeamSection({
             Abrir hub
           </Link>
           {canManage ? (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              Añadir al equipo
-            </Button>
+            <>
+              <Button variant="secondary" size="sm" onClick={() => openAdd("person")}>
+                Añadir persona
+              </Button>
+              <Button size="sm" onClick={() => openAdd("choose")}>
+                Añadir al equipo
+              </Button>
+            </>
           ) : null}
         </div>
       </div>
@@ -476,7 +508,7 @@ function TeamSection({
             description="Añade una persona por correo o crea un agente ligado a un proyecto."
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Button size="sm" onClick={() => openAdd("choose")}>
                   Añadir al equipo
                 </Button>
               ) : undefined
@@ -492,6 +524,8 @@ function TeamSection({
                 <ul className="divide-y divide-line-100">
                   {members.map((m) => {
                     const editable = canManage && m.role !== "owner";
+                    const confirmingRemove = removeConfirmId === m.membershipId;
+                    const removeBusy = removeBusyId === m.membershipId;
                     return (
                       <li
                         key={m.membershipId}
@@ -523,6 +557,39 @@ function TeamSection({
                             </Select>
                             {roleErrors[m.membershipId] ? (
                               <ErrorText>{roleErrors[m.membershipId]}</ErrorText>
+                            ) : null}
+                            <div className="flex items-center gap-1">
+                              {confirmingRemove ? (
+                                <>
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    disabled={removeBusy}
+                                    onClick={() => onRemoveMember(m.membershipId)}
+                                  >
+                                    Confirmar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={removeBusy}
+                                    onClick={() => setRemoveConfirmId(null)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => setRemoveConfirmId(m.membershipId)}
+                                >
+                                  Quitar
+                                </Button>
+                              )}
+                            </div>
+                            {removeErrors[m.membershipId] ? (
+                              <ErrorText>{removeErrors[m.membershipId]}</ErrorText>
                             ) : null}
                           </div>
                         ) : (
@@ -641,6 +708,7 @@ function TeamSection({
         <AddTeamModal
           slug={slug}
           projects={projects}
+          initialMode={addMode}
           onClose={() => setAddOpen(false)}
           onInvite={invitePerson}
           onChanged={load}
@@ -655,17 +723,19 @@ type AddMode = "choose" | "person" | "agent" | "credential";
 function AddTeamModal({
   slug,
   projects,
+  initialMode,
   onClose,
   onInvite,
   onChanged,
 }: {
   slug: string;
   projects: ProjectSummary[];
+  initialMode: AddMode;
   onClose: () => void;
   onInvite: (email: string) => Promise<Invitation>;
   onChanged: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<AddMode>("choose");
+  const [mode, setMode] = useState<AddMode>(initialMode);
   const [email, setEmail] = useState("");
   const [agentProjectSlug, setAgentProjectSlug] = useState(projects[0]?.slug ?? "");
   const [agentName, setAgentName] = useState("");
@@ -678,7 +748,7 @@ function AddTeamModal({
   const [keyError, setKeyError] = useState<string | null>(null);
 
   const selectedProject = projects.find((project) => project.slug === agentProjectSlug);
-  const isCredential = mode === "credential";
+  const isCredential = mode === "credential" && Boolean(newKey);
   const canCreateAgent = Boolean(
     selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && !busy
   );
@@ -891,15 +961,9 @@ function AddTeamModal({
             Esta key solo se muestra ahora. Guárdala antes de cerrar este diálogo.
           </Notice>
           <CodeBlock title="API key">{newKey}</CodeBlock>
-          <label className="flex cursor-pointer items-start gap-2 text-body-sm text-ink-700">
-            <input
-              type="checkbox"
-              checked={confirmedSaved}
-              onChange={(e) => setConfirmedSaved(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-line-200 text-blue-600 focus:ring-blue-600"
-            />
-            <span>Guardé la key en un lugar seguro o la copié manualmente.</span>
-          </label>
+          <Checkbox checked={confirmedSaved} onChange={setConfirmedSaved}>
+            Guardé la key en un lugar seguro o la copié manualmente.
+          </Checkbox>
           <p className="text-caption text-ink-400">El texto de la key se puede seleccionar si el portapapeles no está disponible.</p>
           <Button type="button" className="w-full" disabled={!confirmedSaved} onClick={onClose}>
             Ya la guardé, cerrar
