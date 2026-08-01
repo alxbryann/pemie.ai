@@ -26,6 +26,7 @@ import {
   CodeBlock,
   EmptyState,
   ErrorText,
+  Field,
   Input,
   Modal,
   PageHeader,
@@ -136,6 +137,24 @@ export default function WorkspaceAgents() {
     [agents, keyProjectId]
   );
 
+  const agentById = useMemo(() => {
+    const m = new Map<string, WorkspaceAgent>();
+    for (const agent of agents) m.set(agent.id, agent);
+    return m;
+  }, [agents]);
+
+  function applyAgentSelection(nextId: string) {
+    const previousName = agentsForKeyProject.find((a) => a.id === agentId)?.name ?? "";
+    const nextName = agentsForKeyProject.find((a) => a.id === nextId)?.name ?? "";
+    setAgentId(nextId);
+    setKeyName((current) =>
+      current.trim() === "" || current === previousName ? nextName : current
+    );
+  }
+
+  const selectedAgent = agentsForKeyProject.find((a) => a.id === agentId) ?? null;
+  const nameIsDerived = selectedAgent !== null && keyName === selectedAgent.name;
+
   async function load() {
     setError(null);
     try {
@@ -214,6 +233,7 @@ export default function WorkspaceAgents() {
       track("api_key_created", { scope_level: scopeLevel });
       setNewKey(r.key);
       setKeyName("");
+      applyAgentSelection("");
       await load();
     } catch (e) {
       track("api_key_created_failed", { reason: analyticsFailureReason(e) });
@@ -356,55 +376,65 @@ ${TOOLS_SECTION}
           <Card>
             <h3 className="text-h4 text-ink-900">Generar API key</h3>
             <form onSubmit={createKey} className="mt-4 space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  placeholder="Nombre (ej: hermes-prod)"
-                  value={keyName}
-                  onChange={(e) => setKeyName(e.target.value)}
-                  className="max-w-xs"
-                  aria-label="Nombre de API key"
-                />
-                <Select
-                  value={scopeLevel}
-                  onChange={(e) => setScopeLevel(e.target.value as ApiKeyScopeLevel)}
-                  aria-label="Alcance de la key"
-                >
-                  {API_KEY_SCOPE_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      Alcance: {SCOPE_LABELS[level]}
-                    </option>
-                  ))}
-                </Select>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Alcance">
+                  <Select
+                    value={scopeLevel}
+                    onChange={(e) => {
+                      setScopeLevel(e.target.value as ApiKeyScopeLevel);
+                      applyAgentSelection("");
+                    }}
+                  >
+                    {API_KEY_SCOPE_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {SCOPE_LABELS[level]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
                 {scopeLevel === "project" && (
                   <>
-                    <Select
-                      value={keyProjectId}
-                      onChange={(e) => {
-                        setKeyProjectId(e.target.value);
-                        setAgentId("");
-                      }}
-                      aria-label="Proyecto de la key"
-                    >
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={agentId}
-                      onChange={(e) => setAgentId(e.target.value)}
-                      aria-label="Agente asociado"
-                    >
-                      <option value="">— sin agente —</option>
-                      {agentsForKeyProject.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </Select>
+                    <Field label="Proyecto">
+                      <Select
+                        value={keyProjectId}
+                        onChange={(e) => {
+                          setKeyProjectId(e.target.value);
+                          applyAgentSelection("");
+                        }}
+                      >
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Agente">
+                      <Select value={agentId} onChange={(e) => applyAgentSelection(e.target.value)}>
+                        <option value="">— sin agente —</option>
+                        {agentsForKeyProject.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                   </>
                 )}
+                <Field
+                  label="Nombre de la key"
+                  hint={
+                    nameIsDerived
+                      ? "Autocompletado desde el agente — puedes ajustarlo."
+                      : "Mínimo 2 caracteres."
+                  }
+                >
+                  <Input
+                    placeholder="Ej: hermes-prod"
+                    value={keyName}
+                    onChange={(e) => setKeyName(e.target.value)}
+                  />
+                </Field>
               </div>
               {scopeLevel !== "project" && (
                 <p className="text-body-sm text-ink-500">
@@ -455,6 +485,7 @@ ${TOOLS_SECTION}
                 <div className="divide-y divide-line-100">
                   {keys.map((k) => {
                     const proj = k.projectId ? projectById.get(k.projectId) : null;
+                    const agent = k.agentId ? agentById.get(k.agentId) : null;
                     return (
                       <div
                         key={k.id}
@@ -474,6 +505,11 @@ ${TOOLS_SECTION}
                                 {proj.slug}
                               </Badge>
                             )}
+                            {agent && (
+                              <Badge tone="neutral" mono>
+                                {agent.name}
+                              </Badge>
+                            )}
                             {k.scopes.map((s) => (
                               <Badge key={s} tone="neutral" mono>
                                 {s}
@@ -481,7 +517,7 @@ ${TOOLS_SECTION}
                             ))}
                           </div>
                           <p className="mt-1 font-mono text-caption text-ink-400">
-                            {k.lastUsedAt
+                            creada {new Date(k.createdAt).toLocaleString()} · {k.lastUsedAt
                               ? `último uso ${new Date(k.lastUsedAt).toLocaleString()}`
                               : "sin usar aún"}
                           </p>
