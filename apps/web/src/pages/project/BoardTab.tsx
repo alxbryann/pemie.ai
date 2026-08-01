@@ -235,6 +235,11 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   const [type, setType] = useState("task");
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
 
+  // Los handlers de drag necesitan leer el tablero ya actualizado dentro del mismo
+  // evento: React difiere los updaters de setState hasta el render, así que calcular
+  // dentro de uno deja los resultados sin definir para el resto del handler.
+  const boardRef = useRef<Board | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -255,11 +260,17 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     return closestCorners(args);
   }, []);
 
+  /** Única vía de escritura del tablero: mantiene `boardRef` sincrónico con el estado. */
+  function commitBoard(next: Board | null) {
+    boardRef.current = next;
+    setBoard(next);
+  }
+
   async function load() {
     setError(null);
     try {
       const r = await api.board.get(ws, proj);
-      setBoard(r.board);
+      commitBoard(r.board);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Error cargando el tablero");
     } finally {
@@ -323,53 +334,49 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   function applyCardUpdate(updated: CardData) {
-    setBoard((prev) => {
-      if (!prev) return prev;
-      // Si cambió de columna, recargar para respetar orden del servidor.
-      const current = prev.columns.flatMap((c) => c.cards).find((c) => c.id === updated.id);
-      if (!current || current.columnId !== updated.columnId) {
-        void load();
-        return prev;
-      }
-      return {
-        ...prev,
-        columns: prev.columns.map((col) => ({
-          ...col,
-          cards: col.cards.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
-        })),
-      };
-    });
     setSelectedCard(null);
+    const prev = boardRef.current;
+    if (!prev) return;
+    // Si cambió de columna, recargar para respetar orden del servidor.
+    const current = prev.columns.flatMap((c) => c.cards).find((c) => c.id === updated.id);
+    if (!current || current.columnId !== updated.columnId) return void load();
+    commitBoard({
+      ...prev,
+      columns: prev.columns.map((col) => ({
+        ...col,
+        cards: col.cards.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)),
+      })),
+    });
   }
 
   function handleDragStart(event: DragStartEvent) {
-    if (!board) return;
-    setActiveCard(board.columns.flatMap((c) => c.cards).find((c) => c.id === event.active.id) ?? null);
+    const prev = boardRef.current;
+    if (!prev) return;
+    setActiveCard(prev.columns.flatMap((c) => c.cards).find((c) => c.id === event.active.id) ?? null);
   }
 
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
     if (!over) return;
 
-    // Resolver contenedores dentro del updater: si se usa `board` del closure,
-    // un dragOver rápido tras el primero encuentra activeIndex === -1 y se atasca.
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const activeContainer = findContainer(prev, String(active.id));
-      const overContainer = findContainer(prev, String(over.id));
-      if (!activeContainer || !overContainer || activeContainer === overContainer) return prev;
+    // Leer de `boardRef` y no del closure: un dragOver rápido tras el primero
+    // encontraría `board` desactualizado, con activeIndex === -1, y se atascaría.
+    const prev = boardRef.current;
+    if (!prev) return;
+    const activeContainer = findContainer(prev, String(active.id));
+    const overContainer = findContainer(prev, String(over.id));
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
 
-      const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
-      const from = columns.find((c) => c.id === activeContainer);
-      const to = columns.find((c) => c.id === overContainer);
-      if (!from || !to) return prev;
-      const activeIndex = from.cards.findIndex((c) => c.id === active.id);
-      if (activeIndex === -1) return prev;
-      const [moved] = from.cards.splice(activeIndex, 1);
-      const overIndex = to.cards.findIndex((c) => c.id === over.id);
-      to.cards.splice(overIndex >= 0 ? overIndex : to.cards.length, 0, { ...moved, columnId: to.id });
-      return { ...prev, columns };
-    });
+    const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
+    const from = columns.find((c) => c.id === activeContainer);
+    const to = columns.find((c) => c.id === overContainer);
+    if (!from || !to) return;
+    const activeIndex = from.cards.findIndex((c) => c.id === active.id);
+    if (activeIndex === -1) return;
+    const [moved] = from.cards.splice(activeIndex, 1);
+    const overIndex = to.cards.findIndex((c) => c.id === over.id);
+    to.cards.splice(overIndex >= 0 ? overIndex : to.cards.length, 0, { ...moved, columnId: to.id });
+    commitBoard({ ...prev, columns });
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -382,34 +389,32 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     // de forma optimista a otro contenedor, así que hay que resincronizar con el servidor.
     if (!over) return void load();
 
-    let finalOrder: number | undefined;
-    let container: string | undefined;
-
-    setBoard((prev) => {
-      if (!prev) return prev;
-      container = findContainer(prev, String(over.id));
-      if (!container) return prev;
-      const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
-      const col = columns.find((c) => c.id === container);
-      if (!col) return prev;
-      const activeIndex = col.cards.findIndex((c) => c.id === active.id);
-      const overIndex = col.cards.findIndex((c) => c.id === over.id);
-      if (activeIndex === -1) return prev;
-      if (overIndex !== -1 && activeIndex !== overIndex) {
-        col.cards = arrayMove(col.cards, activeIndex, overIndex);
-      }
-      const idx = col.cards.findIndex((c) => c.id === active.id);
-      const prevCard = col.cards[idx - 1];
-      const nextCard = col.cards[idx + 1];
-      if (prevCard && nextCard) finalOrder = (prevCard.order + nextCard.order) / 2;
-      else if (prevCard) finalOrder = prevCard.order + 1;
-      else if (nextCard) finalOrder = nextCard.order - 1;
-      else finalOrder = 0;
-      col.cards[idx] = { ...col.cards[idx], columnId: container, order: finalOrder };
-      return { ...prev, columns };
-    });
-
+    const prev = boardRef.current;
+    if (!prev) return void load();
+    const container = findContainer(prev, String(over.id));
     if (!container) return void load();
+
+    const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
+    const col = columns.find((c) => c.id === container);
+    if (!col) return void load();
+    const activeIndex = col.cards.findIndex((c) => c.id === active.id);
+    const overIndex = col.cards.findIndex((c) => c.id === over.id);
+    if (activeIndex === -1) return void load();
+    if (overIndex !== -1 && activeIndex !== overIndex) {
+      col.cards = arrayMove(col.cards, activeIndex, overIndex);
+    }
+
+    const idx = col.cards.findIndex((c) => c.id === active.id);
+    const prevCard = col.cards[idx - 1];
+    const nextCard = col.cards[idx + 1];
+    let finalOrder: number;
+    if (prevCard && nextCard) finalOrder = (prevCard.order + nextCard.order) / 2;
+    else if (prevCard) finalOrder = prevCard.order + 1;
+    else if (nextCard) finalOrder = nextCard.order - 1;
+    else finalOrder = 0;
+    col.cards[idx] = { ...col.cards[idx], columnId: container, order: finalOrder };
+    commitBoard({ ...prev, columns });
+
     await persistMove(String(active.id), container, finalOrder, fromColumn);
   }
 
