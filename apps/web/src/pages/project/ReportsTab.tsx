@@ -153,7 +153,7 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
                           {r.scope}
                         </Badge>
                         {r.verdict && (
-                          <Badge tone="brand" mono>
+                          <Badge tone="brand" mono wrap>
                             {r.verdict}
                           </Badge>
                         )}

@@ -276,18 +276,21 @@ export function Badge({
   tone = "neutral",
   dot = false,
   mono = false,
+  wrap = false,
 }: {
   children: ReactNode;
   tone?: BadgeTone;
   dot?: boolean;
   mono?: boolean;
+  /** Para contenido de longitud libre (ej. un verdict de texto libre): permite que rompa línea en vez de desbordar. */
+  wrap?: boolean;
 }) {
   const t = BADGE_TONES[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-1 leading-snug ${t.chip} ${
-        mono ? "font-mono text-mono-label font-medium uppercase" : "text-caption font-semibold"
-      }`}
+      className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 leading-snug ${
+        wrap ? "max-w-full whitespace-normal break-words text-left" : "whitespace-nowrap"
+      } ${t.chip} ${mono ? "font-mono text-mono-label font-medium uppercase" : "text-caption font-semibold"}`}
     >
       {dot ? <span className={`h-1.5 w-1.5 rounded-pill ${t.dot}`} /> : null}
       {children}
