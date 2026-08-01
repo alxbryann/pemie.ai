@@ -560,6 +560,15 @@ async function runAnthropicTurn(
           // El thinking adaptativo viene activo por defecto y `max_tokens` es el
           // techo de thinking + texto: con 2048 la respuesta se cortaba a mitad.
           max_tokens: 8192,
+          // Cachea el prefijo hasta el último bloque: tools + system (estables en
+          // todo el turno) y la conversación acumulada. Esto último es lo que más
+          // pesa — cada tool_result llega hasta 80k caracteres y se reenvía entero
+          // en cada ronda siguiente. Sin caché, las 8 rondas lo pagan 8 veces.
+          //
+          // El mínimo cacheable depende del modelo (Opus 5: 512 tokens,
+          // Sonnet 5: 1024, Haiku 4.5: 4096). Por debajo de ese umbral la API
+          // simplemente no cachea: no es un error y el turno sigue igual.
+          cache_control: { type: "ephemeral" },
           system: systemPrompt(session, summary),
           tools: toolDefs,
           messages,
@@ -577,7 +586,16 @@ async function runAnthropicTurn(
     const data = (await res.json()) as {
       stop_reason: string;
       content: AnthropicContent[];
+      usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
     };
+
+    // A partir de la ronda 2 el prefijo ya se escribió, así que una lectura en
+    // cero significa que algo lo invalidó (un valor que cambia dentro del
+    // prefijo) o que quedó por debajo del mínimo del modelo. Solo se avisa en
+    // ese caso: si el caché funciona, no hay nada que reportar.
+    if (round > 0 && !data.usage?.cache_read_input_tokens) {
+      console.warn(`[telegram] sin lectura de caché en la ronda ${round + 1} (modelo ${model})`);
+    }
 
     const toolUses = data.content.filter(
       (c): c is Extract<AnthropicContent, { type: "tool_use" }> => c.type === "tool_use"
