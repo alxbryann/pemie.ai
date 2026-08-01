@@ -233,6 +233,7 @@ export default function WorkspaceAgents() {
       track("api_key_created", { scope_level: scopeLevel });
       setNewKey(r.key);
       applyAgentSelection("");
+      setKeyName("");
       await load();
     } catch (e) {
       track("api_key_created_failed", { reason: analyticsFailureReason(e) });
