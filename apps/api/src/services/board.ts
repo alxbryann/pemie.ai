@@ -199,6 +199,20 @@ export async function opMoveCard(
 }
 
 /**
+ * ¿La última vez que esta tarjeta cambió de columna la movió una persona?
+ * Los automatismos (auto-move desde commits) lo consultan para no pisar una
+ * decisión manual: quien mueve la tarjeta a mano manda hasta que la vuelva a mover.
+ */
+export async function wasLastMovedByUser(cardId: string): Promise<boolean> {
+  const lastMove = await prisma.cardActivity.findFirst({
+    where: { cardId, action: "moved" },
+    orderBy: { createdAt: "desc" },
+    select: { actorType: true },
+  });
+  return lastMove?.actorType === "user";
+}
+
+/**
  * Operación (ya autorizada): reasigna una tarjeta y registra la actividad. Usada
  * al sincronizar el assignee de la HU vinculada (ver stories.opAssignStory).
  */

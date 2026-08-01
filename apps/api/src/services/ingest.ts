@@ -165,6 +165,21 @@ async function recordCommits(
     contributorId.set(login, contributor.id);
   }
 
+  // Qué SHAs ya estaban registrados, *antes* de insertarlos: `createMany` informa
+  // cuántos entraron, no cuáles, y el auto-move de abajo solo debe correr sobre lo
+  // nuevo. Un sync "full" vuelve a traer el histórico entero, así que sin este
+  // filtro se reaplicaban las reglas de palabras clave sobre commits viejos y las
+  // tarjetas movidas a mano volvían a la columna que dictaba su commit original.
+  const known = new Set(
+    (
+      await prisma.commit.findMany({
+        where: { repoId: repo.id, sha: { in: valid.map((c) => c.sha) } },
+        select: { sha: true },
+      })
+    ).map((c) => c.sha)
+  );
+  const fresh = valid.filter((c) => !known.has(c.sha));
+
   const { count } = await prisma.commit.createMany({
     data: valid.map((c) => {
       const login = (c.login || c.authorName || "desconocido").toString().trim() || "desconocido";
@@ -182,12 +197,15 @@ async function recordCommits(
   });
 
   // Auto-mover cards del Kanban según palabras clave en el mensaje del commit
-  // (ej. "PRJ-123 fix: ..." -> mueve la card de esa HU a Revisión). Best effort:
-  // nunca debe hacer fallar la ingesta de commits.
-  try {
-    await autoMoveCardsFromCommits(repo.projectId, project.key, valid);
-  } catch (err) {
-    console.error("auto-move de cards desde commits falló (best effort)", err);
+  // (ej. "PRJ-123 fix: ..." -> mueve la card de esa HU a Revisión). Solo commits
+  // nuevos: re-sincronizar o una re-entrega del webhook no debe volver a mover
+  // nada. Best effort: nunca debe hacer fallar la ingesta de commits.
+  if (fresh.length > 0) {
+    try {
+      await autoMoveCardsFromCommits(repo.projectId, project.key, fresh);
+    } catch (err) {
+      console.error("auto-move de cards desde commits falló (best effort)", err);
+    }
   }
 
   return count;
@@ -237,6 +255,10 @@ async function autoMoveCardsFromCommits(
 
     const card = await prisma.card.findUnique({ where: { userStoryId: story.id } });
     if (!card) continue;
+
+    // Una colocación manual gana sobre el automatismo: si la última vez la movió
+    // una persona, el commit no la toca hasta que ella la vuelva a mover.
+    if (await board.wasLastMovedByUser(card.id)) continue;
 
     const column = await prisma.column.findFirst({ where: { boardId: card.boardId, order: targetOrder } });
     if (!column || column.id === card.columnId) continue;
