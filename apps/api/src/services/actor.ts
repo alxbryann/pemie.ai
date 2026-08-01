@@ -5,10 +5,6 @@ export interface ActorRecord {
   actorId: string | null;
 }
 
-export interface ResolvedActorRecord extends ActorRecord {
-  actorName: string;
-}
-
 const FALLBACK_NAMES: Record<string, string> = {
   agent: "Agente no identificado",
   user: "Persona no identificada",
@@ -19,7 +15,7 @@ function fallbackActorName(actorType: string): string {
 }
 
 /**
- * Resuelve los actores de una página con dos consultas batch, manteniendo un
+ * Resuelve los actores de una página con consultas batch, manteniendo un
  * fallback estable para ids nulos, borrados o ids de key sin agente asociado.
  */
 export async function resolveActorNames<T extends ActorRecord>(
@@ -40,7 +36,7 @@ export async function resolveActorNames<T extends ActorRecord>(
     ),
   ];
 
-  const [users, agents] = await Promise.all([
+  const [users, agents, apiKeys] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, name: true, email: true },
@@ -49,11 +45,18 @@ export async function resolveActorNames<T extends ActorRecord>(
       where: { id: { in: agentIds } },
       select: { id: true, name: true },
     }),
+    prisma.apiKey.findMany({
+      where: { id: { in: agentIds }, agentId: null },
+      select: { id: true, name: true },
+    }),
   ]);
 
   const names = new Map<string, string>();
   for (const user of users) names.set(`user:${user.id}`, user.name?.trim() || user.email);
   for (const agent of agents) names.set(`agent:${agent.id}`, agent.name);
+  for (const apiKey of apiKeys) {
+    names.set(`agent:${apiKey.id}`, `${apiKey.name} (key sin agente)`);
+  }
 
   return records.map((record) => ({
     ...record,

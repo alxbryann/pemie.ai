@@ -249,7 +249,7 @@ export default function CardDetailModal({
                             {a.actorType}
                           </Badge>
                         </span>
-                        <span className="mr-2 text-ink-700">{a.actorName}</span>
+                        <span className="mr-2 text-body-sm text-ink-700">{a.actorName}</span>
                         {activityLabel(a)}
                       </span>
                       <time className="shrink-0 font-mono text-caption text-ink-400">
