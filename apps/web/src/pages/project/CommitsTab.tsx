@@ -376,21 +376,24 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           ) : (
             <div className="divide-y divide-line-100">
               {repos.map((r) => (
-                <div key={r.id} className="flex items-center justify-between -mx-6 px-6 py-3 hover:bg-surface-50">
-                  <div>
+                <div
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-2 -mx-6 px-6 py-3 hover:bg-surface-50"
+                >
+                  <div className="flex min-w-0 flex-1 items-baseline gap-x-2">
                     <a
                       href={r.url ?? undefined}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-body font-medium text-ink-900 hover:text-blue-600 hover:underline"
+                      className="min-w-0 truncate text-body font-medium text-ink-900 hover:text-blue-600 hover:underline"
                     >
                       {r.owner}/{r.name}
                     </a>
-                    <span className="ml-2 font-mono text-caption text-ink-400">
+                    <span className="shrink-0 font-mono text-caption text-ink-400">
                       {r._count.commits} commits
                     </span>
                   </div>
-                  <Button variant="danger" size="sm" onClick={() => unlink(r.id)}>
+                  <Button variant="danger" size="sm" className="shrink-0" onClick={() => unlink(r.id)}>
                     Quitar
                   </Button>
                 </div>
