@@ -289,6 +289,7 @@ export interface AuditLog {
   id: string;
   actorType: string;
   actorId: string | null;
+  actorName: string;
   action: string;
   entity: string | null;
   entityId: string | null;
@@ -338,6 +339,7 @@ export interface CardActivity {
   cardId: string;
   actorType: string;
   actorId: string | null;
+  actorName: string;
   action: string;
   fromValue: string | null;
   toValue: string | null;
