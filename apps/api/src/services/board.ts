@@ -253,9 +253,28 @@ export interface UpdateCardInput {
 /** Actualiza campos de una tarjeta (member+) y registra actividad relevante. */
 export async function updateCard(userId: string, cardId: string, patch: UpdateCardInput) {
   const card = await cardWithProject(cardId);
+  await projectWithAccess(userId, card.board.projectId, "member");
+  return opUpdateCard(card, patch, { actorType: "user", actorId: userId });
+}
+
+/**
+ * Operación (ya autorizada): aplica el patch a una tarjeta ya cargada y deja
+ * en CardActivity un evento por cada campo que realmente cambió.
+ */
+export async function opUpdateCard(
+  card: {
+    id: string;
+    title: string;
+    description: string | null;
+    type: string;
+    assigneeId: string | null;
+    userStoryId: string | null;
+    board: { projectId: string };
+  },
+  patch: UpdateCardInput,
+  actor: CardActor
+) {
   const projectId = card.board.projectId;
-  await projectWithAccess(userId, projectId, "member");
-  const actor: CardActor = { actorType: "user", actorId: userId };
 
   const data: Prisma.CardUpdateInput = {};
   const activities: Array<{ action: string; from: string | null; to: string | null }> = [];
@@ -335,6 +354,11 @@ export async function updateCard(userId: string, cardId: string, patch: UpdateCa
 export async function listCardActivities(userId: string, cardId: string, limit = 50) {
   const card = await cardWithProject(cardId);
   await projectWithAccess(userId, card.board.projectId);
+  return opListCardActivities(cardId, limit);
+}
+
+/** Operación (ya autorizada): actividad reciente de una tarjeta, con nombres de actor. */
+export async function opListCardActivities(cardId: string, limit = 50) {
   const take = Math.min(Math.max(limit, 1), 100);
   const activities = await prisma.cardActivity.findMany({
     where: { cardId },

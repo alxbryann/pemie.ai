@@ -275,6 +275,11 @@ export async function deleteStory(userId: string, storyId: string) {
   const story = await getStoryById(storyId);
   if (!story) throw notFound("HU no encontrada");
   await projectWithAccess(userId, story.projectId, "member");
+  return opDeleteStory(story);
+}
+
+/** Operación (ya autorizada): elimina la HU ya cargada. */
+export async function opDeleteStory(story: { id: string }) {
   try {
     await prisma.userStory.delete({ where: { id: story.id } });
   } catch (err) {

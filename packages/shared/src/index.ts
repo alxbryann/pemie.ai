@@ -64,6 +64,11 @@ export const MCP_TOOL_NAMES = [
   "link_story_to_card",
   "get_story_commit_progress",
   "search",
+  "create_note",
+  "get_user_story",
+  "delete_user_story",
+  "update_card",
+  "list_card_activities",
 ] as const;
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
 

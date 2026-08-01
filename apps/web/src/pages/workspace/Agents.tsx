@@ -69,6 +69,11 @@ const TOOL_DESCRIPTIONS: Record<(typeof MCP_TOOL_NAMES)[number], string> = {
   move_card: "mueve una tarjeta de columna.",
   link_story_to_card: "liga una tarjeta existente a una HU sin tarjeta.",
   search: "busca un texto en HUs, commits, notas y tarjetas (respeta los scopes de la key).",
+  create_note: "deja una nota o pregunta en el proyecto.",
+  get_user_story: "detalle de una sola HU por id.",
+  delete_user_story: "elimina una HU; su tarjeta se conserva desvinculada.",
+  update_card: "actualiza título, descripción, tipo, asignado o HU de una tarjeta.",
+  list_card_activities: "actividad de una tarjeta con el nombre del actor.",
 };
 
 // Agrupación solo para presentar el prompt sugerido; los nombres vienen de
@@ -83,18 +88,30 @@ const TOOL_GROUPS: { label: string; tools: (typeof MCP_TOOL_NAMES)[number][] }[]
     label: "Objetivo e informes",
     tools: ["get_objective", "update_objective", "get_evaluation", "publish_report"],
   },
-  { label: "Notas (feedback)", tools: ["list_notes", "answer_note"] },
+  { label: "Notas (feedback)", tools: ["list_notes", "create_note", "answer_note"] },
   {
     label: "Historias de Usuario",
     tools: [
       "list_user_stories",
+      "get_user_story",
       "create_user_story",
       "update_user_story",
       "assign_user_story",
+      "delete_user_story",
       "list_contributors",
     ],
   },
-  { label: "Kanban", tools: ["list_board", "create_card", "move_card", "link_story_to_card"] },
+  {
+    label: "Kanban",
+    tools: [
+      "list_board",
+      "create_card",
+      "update_card",
+      "move_card",
+      "link_story_to_card",
+      "list_card_activities",
+    ],
+  },
 ];
 
 const TOOLS_SECTION = TOOL_GROUPS.map(

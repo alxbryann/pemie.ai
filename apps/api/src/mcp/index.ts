@@ -477,6 +477,101 @@ const TOOLS: McpTool[] = [
       );
     },
   },
+  {
+    name: "create_note",
+    description: "Deja una nota o pregunta en el proyecto.",
+    scope: "notes:write",
+    inputSchema: withProjectId({ message: { type: "string" } }, ["message"]),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "notes:write");
+      // `authorId` referencia a un User: una nota de agente no tiene autor humano.
+      return reports.opCreateNote(projectId, String(args.message ?? ""), null);
+    },
+  },
+  {
+    name: "get_user_story",
+    description: "Detalle de una sola HU por id, sin listar todas las del proyecto.",
+    scope: "stories:read",
+    inputSchema: withProjectId({ storyId: { type: "string" } }, ["storyId"]),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "stories:read");
+      const story = await stories.getStoryById(String(args.storyId));
+      if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
+      return story;
+    },
+  },
+  {
+    name: "delete_user_story",
+    description:
+      "Elimina una HU. Su tarjeta del Kanban se conserva desvinculada, con su actividad intacta.",
+    scope: "stories:write",
+    inputSchema: withProjectId({ storyId: { type: "string" } }, ["storyId"]),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "stories:write");
+      const story = await stories.getStoryById(String(args.storyId));
+      if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
+      return stories.opDeleteStory(story);
+    },
+  },
+  {
+    name: "update_card",
+    description:
+      "Actualiza título, descripción, tipo, asignado o HU vinculada de una tarjeta. Omitir un campo lo deja igual; enviarlo en null lo desvincula.",
+    scope: "board:write",
+    inputSchema: withProjectId(
+      {
+        cardId: { type: "string" },
+        title: { type: "string" },
+        description: { type: ["string", "null"] },
+        type: { type: "string", enum: ["story", "task", "bug"] },
+        assigneeId: { type: ["string", "null"] },
+        userStoryId: { type: ["string", "null"] },
+      },
+      ["cardId"]
+    ),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "board:write");
+      const card = await board.getCardWithProject(String(args.cardId));
+      if (!card || card.board.projectId !== projectId)
+        throw forbidden("La tarjeta no pertenece a este proyecto");
+
+      // `undefined` (campo ausente) y `null` (desvincular) significan cosas
+      // distintas: solo se copia lo que el agente mandó explícitamente.
+      const patch: board.UpdateCardInput = {};
+      if (typeof args.title === "string") patch.title = args.title;
+      if (typeof args.type === "string") patch.type = args.type;
+      if (args.description !== undefined)
+        patch.description = args.description === null ? null : String(args.description);
+      if (args.assigneeId !== undefined)
+        patch.assigneeId = args.assigneeId === null ? null : String(args.assigneeId);
+      if (args.userStoryId !== undefined)
+        patch.userStoryId = args.userStoryId === null ? null : String(args.userStoryId);
+
+      return board.opUpdateCard(card, patch, {
+        actorType: "agent",
+        actorId: ctx.key.agentId ?? ctx.key.id,
+      });
+    },
+  },
+  {
+    name: "list_card_activities",
+    description: "Actividad de una tarjeta (creación, movimientos, asignaciones) con el nombre del actor.",
+    scope: "board:read",
+    inputSchema: withProjectId(
+      { cardId: { type: "string" }, limit: { type: "number" } },
+      ["cardId"]
+    ),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "board:read");
+      const card = await board.getCardWithProject(String(args.cardId));
+      if (!card || card.board.projectId !== projectId)
+        throw forbidden("La tarjeta no pertenece a este proyecto");
+      return board.opListCardActivities(
+        card.id,
+        typeof args.limit === "number" ? args.limit : undefined
+      );
+    },
+  },
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
