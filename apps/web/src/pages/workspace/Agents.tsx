@@ -232,7 +232,6 @@ export default function WorkspaceAgents() {
       });
       track("api_key_created", { scope_level: scopeLevel });
       setNewKey(r.key);
-      setKeyName("");
       applyAgentSelection("");
       await load();
     } catch (e) {
@@ -426,7 +425,9 @@ ${TOOLS_SECTION}
                   hint={
                     nameIsDerived
                       ? "Autocompletado desde el agente — puedes ajustarlo."
-                      : "Mínimo 2 caracteres."
+                      : keyName.trim().length < 2
+                        ? "Mínimo 2 caracteres."
+                        : undefined
                   }
                 >
                   <Input
@@ -438,7 +439,8 @@ ${TOOLS_SECTION}
               </div>
               {scopeLevel !== "project" && (
                 <p className="text-body-sm text-ink-500">
-                  Las tools de proyecto exigirán{" "}
+                  Las keys de alcance workspace y usuario no se pueden asociar a un agente; escribe
+                  el nombre de la key manualmente. Las tools de proyecto exigirán{" "}
                   <code className="font-mono text-caption">projectId</code>. Usa{" "}
                   <code className="font-mono text-caption">list_projects</code> para descubrirlos.
                 </p>
@@ -506,7 +508,7 @@ ${TOOLS_SECTION}
                               </Badge>
                             )}
                             {agent && (
-                              <Badge tone="neutral" mono>
+                              <Badge tone="success" mono>
                                 {agent.name}
                               </Badge>
                             )}
