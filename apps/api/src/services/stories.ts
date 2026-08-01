@@ -170,7 +170,13 @@ export async function opCreateStory(
   const cardActor: CardActor = actor.createdById
     ? { actorType: "user", actorId: actor.createdById }
     : { actorType: "agent", actorId: actor.createdByAgentId ?? null };
-  await board.opCreateCard(projectId, { title: story.title, type: "story", userStoryId: story.id }, cardActor);
+  // «PEM-13 · Título» es el formato que ya usaban las tarjetas creadas a mano:
+  // la tarjeta se lee igual en el tablero venga de donde venga.
+  await board.opCreateCard(
+    projectId,
+    { title: `${story.key} · ${story.title}`, type: "story", userStoryId: story.id },
+    cardActor
+  );
 
   return story;
 }
