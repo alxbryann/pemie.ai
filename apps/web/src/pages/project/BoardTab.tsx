@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
+  rectIntersection,
   useDroppable,
   useSensor,
   useSensors,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -241,6 +244,17 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Con DragOverlay el nodo activo se queda en la columna origen (opacity-40);
+  // closestCorners solo mide ese rect y casi nunca detecta la columna destino.
+  // Priorizar lo que está bajo el puntero desbloquea el arrastre entre columnas.
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const pointerHits = pointerWithin(args);
+    if (pointerHits.length > 0) return pointerHits;
+    const rectHits = rectIntersection(args);
+    if (rectHits.length > 0) return rectHits;
+    return closestCorners(args);
+  }, []);
+
   async function load() {
     setError(null);
     try {
@@ -335,13 +349,16 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
-    if (!board || !over) return;
-    const activeContainer = findContainer(board, String(active.id));
-    const overContainer = findContainer(board, String(over.id));
-    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+    if (!over) return;
 
+    // Resolver contenedores dentro del updater: si se usa `board` del closure,
+    // un dragOver rápido tras el primero encuentra activeIndex === -1 y se atasca.
     setBoard((prev) => {
       if (!prev) return prev;
+      const activeContainer = findContainer(prev, String(active.id));
+      const overContainer = findContainer(prev, String(over.id));
+      if (!activeContainer || !overContainer || activeContainer === overContainer) return prev;
+
       const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
       const from = columns.find((c) => c.id === activeContainer);
       const to = columns.find((c) => c.id === overContainer);
@@ -361,17 +378,17 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     const fromColumn = activeCard?.columnId;
     setActiveCard(null);
     const { active, over } = event;
-    if (!board) return;
     // Soltar fuera de cualquier columna: handleDragOver ya pudo haber movido la tarjeta
     // de forma optimista a otro contenedor, así que hay que resincronizar con el servidor.
     if (!over) return void load();
-    const container = findContainer(board, String(over.id));
-    if (!container) return void load();
 
     let finalOrder: number | undefined;
+    let container: string | undefined;
 
     setBoard((prev) => {
       if (!prev) return prev;
+      container = findContainer(prev, String(over.id));
+      if (!container) return prev;
       const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
       const col = columns.find((c) => c.id === container);
       if (!col) return prev;
@@ -392,6 +409,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       return { ...prev, columns };
     });
 
+    if (!container) return void load();
     await persistMove(String(active.id), container, finalOrder, fromColumn);
   }
 
@@ -424,7 +442,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       {/* Columnas */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
