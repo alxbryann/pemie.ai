@@ -15,6 +15,7 @@ import * as stats from "../services/stats.js";
 import * as reports from "../services/reports.js";
 import * as stories from "../services/stories.js";
 import * as board from "../services/board.js";
+import * as search from "../services/search.js";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "pemie.ai", version: "0.1.0" };
@@ -437,6 +438,43 @@ const TOOLS: McpTool[] = [
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
       return stories.opGetStoryCommitProgress(story);
+    },
+  },
+  {
+    name: "search",
+    description:
+      "Busca un texto en las HUs, commits, notas y tarjetas del proyecto. Devuelve el tipo y el id de cada resultado para poder operarlo después.",
+    // Sin scope estático: cada tipo exige el suyo dentro del handler, así una
+    // key parcial busca en lo que sí puede leer en vez de recibir un 403 por todo.
+    scope: null,
+    inputSchema: withProjectId(
+      {
+        query: { type: "string", description: "Texto a buscar (mínimo 2 caracteres)." },
+        types: {
+          type: "array",
+          items: { type: "string", enum: [...search.SEARCHABLE_TYPES] },
+          description: "Limita la búsqueda a estos tipos; por defecto, todos los permitidos.",
+        },
+        limit: { type: "number", description: "Máximo de resultados (20 por defecto, tope 50)." },
+      },
+      ["query"]
+    ),
+    handler: async (ctx, args) => {
+      const allowed = search.searchableTypesForKey(ctx.key);
+      const [first] = allowed;
+      if (!first) throw forbidden("La API key no tiene ningún scope de lectura para buscar");
+      // El proyecto se autoriza con un scope que la key sí tiene: así corre la
+      // comprobación de membresía y rol sin exigir uno que no hace falta.
+      const projectId = await requireProject(ctx, args, search.scopeForType(first));
+      return search.opSearch(
+        projectId,
+        {
+          query: String(args.query ?? ""),
+          types: Array.isArray(args.types) ? (args.types as search.SearchableType[]) : undefined,
+          limit: typeof args.limit === "number" ? args.limit : undefined,
+        },
+        allowed
+      );
     },
   },
 ];

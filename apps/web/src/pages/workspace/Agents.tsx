@@ -68,12 +68,13 @@ const TOOL_DESCRIPTIONS: Record<(typeof MCP_TOOL_NAMES)[number], string> = {
   create_card: "crea una tarjeta (opcionalmente ligada a una HU).",
   move_card: "mueve una tarjeta de columna.",
   link_story_to_card: "liga una tarjeta existente a una HU sin tarjeta.",
+  search: "busca un texto en HUs, commits, notas y tarjetas (respeta los scopes de la key).",
 };
 
 // Agrupación solo para presentar el prompt sugerido; los nombres vienen de
 // MCP_TOOL_NAMES, así que un typo o una tool faltante no compila.
 const TOOL_GROUPS: { label: string; tools: (typeof MCP_TOOL_NAMES)[number][] }[] = [
-  { label: "Descubrimiento", tools: ["list_workspaces", "list_projects"] },
+  { label: "Descubrimiento", tools: ["list_workspaces", "list_projects", "search"] },
   {
     label: "Contexto y commits",
     tools: ["get_project_context", "list_commits", "get_story_commit_progress"],
