@@ -115,8 +115,11 @@ export async function createStory(userId: string, projectId: string, input: Crea
 }
 
 /**
- * Operación (ya autorizada): crea la HU con una key incremental por proyecto.
- * Reintenta si dos creaciones concurrentes eligen la misma key (unique).
+ * Operación (ya autorizada): crea la HU con una key incremental por proyecto
+ * y su tarjeta Kanban ya ligada (columna inicial del tablero), para que nunca
+ * quede una HU huérfana sin tarjeta ni haga falta el paso manual de
+ * create_card/link_story_to_card. Reintenta la HU si dos creaciones
+ * concurrentes eligen la misma key (unique).
  */
 export async function opCreateStory(
   projectId: string,
@@ -136,10 +139,11 @@ export async function opCreateStory(
   }
   if (input.assigneeId) await validateAssignee(projectId, input.assigneeId);
 
+  let story: Awaited<ReturnType<typeof prisma.userStory.create>> | undefined;
   for (let attempt = 0; attempt < 5; attempt++) {
     const key = await nextStoryKey(projectId, project.key);
     try {
-      return await prisma.userStory.create({
+      story = await prisma.userStory.create({
         data: {
           projectId,
           key,
@@ -155,12 +159,20 @@ export async function opCreateStory(
           createdByAgentId: actor.createdByAgentId ?? null,
         },
       });
+      break;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
       throw err;
     }
   }
-  throw badRequest("No se pudo asignar una key única a la HU", "key_collision");
+  if (!story) throw badRequest("No se pudo asignar una key única a la HU", "key_collision");
+
+  const cardActor: CardActor = actor.createdById
+    ? { actorType: "user", actorId: actor.createdById }
+    : { actorType: "agent", actorId: actor.createdByAgentId ?? null };
+  await board.opCreateCard(projectId, { title: story.title, type: "story", userStoryId: story.id }, cardActor);
+
+  return story;
 }
 
 export interface ListStoriesFilter {
