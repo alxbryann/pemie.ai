@@ -140,6 +140,17 @@ export async function updateMemberRole(
   return { membershipId: updated.id, role: updated.role as Role, user: target.user };
 }
 
+/** Quita una membresía del workspace (owner/admin). */
+export async function removeMember(userId: string, workspaceId: string, membershipId: string) {
+  await requireMembership(userId, workspaceId, "admin");
+  const target = await prisma.membership.findUnique({ where: { id: membershipId } });
+  if (!target || target.workspaceId !== workspaceId) throw notFound("Miembro no encontrado");
+  if (target.role === "owner") throw forbidden("No se puede quitar al owner del workspace");
+  if (target.userId === userId) throw forbidden("No puedes quitarte a ti mismo del workspace");
+  await prisma.membership.delete({ where: { id: membershipId } });
+  return { ok: true };
+}
+
 // ─── Invitaciones ──────────────────────────────────────────────────────
 
 /** Crea una invitación (owner/admin). */
