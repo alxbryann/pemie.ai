@@ -124,10 +124,12 @@ export default function AgentTab({ ws, proj }: { ws: string; proj: string }) {
               {agents.map((a) => (
                 <div
                   key={a.id}
-                  className="flex items-center justify-between gap-3 -mx-6 px-6 py-2.5 hover:bg-surface-50"
+                  className="flex items-center gap-3 -mx-6 px-6 py-2.5 hover:bg-surface-50"
                 >
-                  <span className="text-body font-medium text-ink-900">{a.name}</span>
-                  <span className="font-mono text-caption text-ink-400">
+                  <span className="min-w-0 flex-1 truncate text-body font-medium text-ink-900">
+                    {a.name}
+                  </span>
+                  <span className="shrink-0 font-mono text-caption text-ink-400">
                     {a._count.apiKeys} keys
                   </span>
                 </div>

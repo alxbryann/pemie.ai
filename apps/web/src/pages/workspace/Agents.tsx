@@ -583,8 +583,10 @@ ${TOOLS_SECTION}
                     key={a.id}
                     className="flex items-center justify-between gap-3 -mx-6 px-6 py-2.5 hover:bg-surface-50"
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-body font-medium text-ink-900">{a.name}</span>
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="max-w-[14rem] truncate text-body font-medium text-ink-900">
+                        {a.name}
+                      </span>
                       <Badge tone="neutral" mono>
                         {a.project.slug}
                       </Badge>
@@ -594,7 +596,7 @@ ${TOOLS_SECTION}
                     </div>
                     <Link
                       to={`/w/${slug}/p/${a.project.slug}`}
-                      className="text-caption text-blue-700 hover:underline"
+                      className="shrink-0 text-caption text-blue-700 hover:underline"
                     >
                       Ir al proyecto
                     </Link>
