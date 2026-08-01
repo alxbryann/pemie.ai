@@ -8,6 +8,7 @@ import type { ActorType, CardType } from "@pemie/shared";
 import { prisma } from "../db.js";
 import { badRequest, notFound } from "./errors.js";
 import { projectWithAccess } from "./ingest.js";
+import { resolveActorNames } from "./actor.js";
 
 const CARD_TYPES: CardType[] = ["story", "task", "bug"];
 const DEFAULT_COLUMNS = [
@@ -335,11 +336,12 @@ export async function listCardActivities(userId: string, cardId: string, limit =
   const card = await cardWithProject(cardId);
   await projectWithAccess(userId, card.board.projectId);
   const take = Math.min(Math.max(limit, 1), 100);
-  return prisma.cardActivity.findMany({
+  const activities = await prisma.cardActivity.findMany({
     where: { cardId },
     orderBy: { createdAt: "desc" },
     take,
   });
+  return resolveActorNames(activities);
 }
 
 /** Carga una tarjeta cruda por id (para que el transporte valide su proyecto). */

@@ -590,6 +590,7 @@ ${TOOLS_SECTION}
                           <Badge tone={l.actorType === "agent" ? "brand" : "neutral"} dot>
                             {l.actorType}
                           </Badge>
+                          <span className="truncate text-body-sm text-ink-700">{l.actorName}</span>
                           <code className="truncate font-mono text-caption text-ink-700">
                             {l.action}
                           </code>

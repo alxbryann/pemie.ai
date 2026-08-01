@@ -20,6 +20,7 @@ import { prisma } from "../db.js";
 import { badRequest, forbidden, notFound, unauthorized } from "./errors.js";
 import { requireMembership } from "./tenancy.js";
 import { projectWithAccess } from "./ingest.js";
+import { resolveActorNames } from "./actor.js";
 
 const KEY_PREFIX = "pemie_sk_";
 const VISIBLE_PREFIX_LEN = KEY_PREFIX.length + 6; // pemie_sk_ + 6 chars
@@ -425,19 +426,21 @@ export async function audit(input: AuditInput) {
 /** Lista el AuditLog de un workspace, más reciente primero (admin+). */
 export async function listAuditLogs(userId: string, workspaceId: string, limit = 100) {
   await requireMembership(userId, workspaceId, "admin");
-  return prisma.auditLog.findMany({
+  const logs = await prisma.auditLog.findMany({
     where: { workspaceId },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(limit, 1), 500),
   });
+  return resolveActorNames(logs);
 }
 
 /** Lista el AuditLog de acciones de agentes en un proyecto, más reciente primero (viewer+). */
 export async function listAuditLogsForProject(userId: string, projectId: string, limit = 100) {
   const project = await projectWithAccess(userId, projectId);
-  return prisma.auditLog.findMany({
+  const logs = await prisma.auditLog.findMany({
     where: { workspaceId: project.workspaceId, entity: "Project", entityId: projectId },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(limit, 1), 500),
   });
+  return resolveActorNames(logs);
 }
