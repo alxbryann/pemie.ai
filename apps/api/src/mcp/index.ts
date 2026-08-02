@@ -655,6 +655,18 @@ const RESOURCES: McpResource[] = [
 
 const RESOURCE_BY_URI = new Map(RESOURCES.map((r) => [r.uri, r]));
 
+/** Recursos visibles para una key. A diferencia de las tools, todos requieren un scope. */
+export function listMcpResourceDefs(key?: ApiKey) {
+  const scopes = key ? (key.scopes as ApiScope[]) : null;
+  return RESOURCES.filter((resource) => scopes === null || scopes.includes(resource.scope)).map((resource) => ({
+    uri: resource.uri,
+    name: resource.name,
+    description: resource.description,
+    mimeType: "application/json",
+    scope: resource.scope,
+  }));
+}
+
 // ─── JSON-RPC ────────────────────────────────────────────────────────────
 
 type JsonRpcId = string | number | null;
@@ -723,11 +735,11 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
 
     case "resources/list":
       return rpcResult(id, {
-        resources: RESOURCES.map((r) => ({
-          uri: r.uri,
-          name: r.name,
-          description: r.description,
-          mimeType: "application/json",
+        resources: listMcpResourceDefs(ctx.key).map(({ uri, name, description, mimeType }) => ({
+          uri,
+          name,
+          description,
+          mimeType,
         })),
       });
 

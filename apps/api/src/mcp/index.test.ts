@@ -8,7 +8,8 @@ import {
   isToolAvailable,
   type ApiScope,
 } from "@pemie/shared";
-import { invokeMcpTool, listMcpToolDefs } from "./index.js";
+import * as agents from "../services/agents.js";
+import { invokeMcpTool, listMcpResourceDefs, listMcpToolDefs } from "./index.js";
 
 function key(scopes: ApiScope[], scopeLevel: "project" | "workspace" | "user" = "project"): ApiKey {
   return { scopes, scopeLevel, projectId: "project-1", expiresAt: null } as ApiKey;
@@ -39,6 +40,14 @@ test("una key solo reports no recibe ni puede invocar search", async () => {
     () => invokeMcpTool(reportsOnly, "search", { query: "hola" }),
     /uno de: stories:read, commits:read, notes:read, board:read/
   );
+});
+
+test("el catálogo de resources también respeta los scopes de la key", () => {
+  const reportsOnly = key(["reports:read"]);
+  const resources = listMcpResourceDefs(reportsOnly);
+  assert.deepEqual(resources.map((resource) => resource.uri), ["pemie://project/reports"]);
+  for (const resource of resources)
+    assert.doesNotThrow(() => agents.requireScope(reportsOnly, resource.scope));
 });
 
 test("el renderer describe de forma distinta los dos alcances", () => {
