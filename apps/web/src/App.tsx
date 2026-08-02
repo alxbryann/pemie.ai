@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, type ReactNode } from "react";
 import { safeNextPath, useAuth } from "./lib/auth.js";
 import { track } from "./lib/analytics/index.js";
@@ -9,7 +9,7 @@ import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
 import Workspaces from "./pages/Workspaces.js";
 import Workspace from "./pages/Workspace.js";
-import WorkspaceAgents from "./pages/workspace/Agents.js";
+import WorkspaceSettings from "./pages/workspace/Agents.js";
 import Project from "./pages/Project.js";
 import AcceptInvite from "./pages/AcceptInvite.js";
 import Settings from "./pages/Settings.js";
@@ -46,12 +46,18 @@ export default function App() {
       <Route path="/app" element={<Protected><Workspaces /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/w/:slug" element={<Protected><Workspace /></Protected>} />
-      <Route path="/w/:slug/agents" element={<Protected><WorkspaceAgents /></Protected>} />
+      <Route path="/w/:slug/settings" element={<Protected><WorkspaceSettings /></Protected>} />
+      <Route path="/w/:slug/agents" element={<Protected><LegacyAgentsRedirect /></Protected>} />
       <Route path="/w/:slug/p/:projectSlug" element={<Protected><Project /></Protected>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+function LegacyAgentsRedirect() {
+  const { slug = "" } = useParams();
+  return <Navigate to={`/w/${slug}/settings`} replace />;
 }
 
 /** `/` es la landing pública; con sesión activa redirige directo al dashboard. */

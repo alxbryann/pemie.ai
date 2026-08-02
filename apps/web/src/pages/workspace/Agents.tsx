@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import {
-  API_SCOPES,
-  API_KEY_SCOPE_LEVELS,
-  buildAgentPrompt,
-  type ApiScope,
-  type ApiKeyScopeLevel,
-} from "@pemie/shared";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { API_SCOPES, buildAgentPrompt, type ApiKeyScopeLevel, type ApiScope } from "@pemie/shared";
 import {
   api,
   analyticsFailureReason,
@@ -15,16 +9,18 @@ import {
   type ApiKeyPublic,
   type AuditLog,
   type ProjectSummary,
-  type WorkspaceAgent,
   type Workspace as Ws,
 } from "../../lib/api.js";
 import { track } from "../../lib/analytics/index.js";
+import { ConnectPanel } from "../../components/ConnectPanel.js";
+import { ScopePicker } from "../../components/ScopePicker.js";
 import { TelegramChannelCard } from "../../components/TelegramChannelCard.js";
+import { SettingsSection } from "../Workspace.js";
 import {
   Badge,
   Button,
   Card,
-  CodeBlock,
+  Checkbox,
   EmptyState,
   ErrorText,
   Field,
@@ -34,10 +30,17 @@ import {
   Select,
   Skeleton,
   SkeletonCard,
-  ToggleChip,
+  Tabs,
 } from "../../components/ui.js";
 
 const MCP_URL = `${API_BASE}/mcp`;
+const TAB_ITEMS = [
+  { id: "general", label: "General" },
+  { id: "credentials", label: "Credenciales" },
+  { id: "telegram", label: "Telegram" },
+  { id: "activity", label: "Actividad" },
+] as const;
+type SettingsTab = (typeof TAB_ITEMS)[number]["id"];
 
 const SCOPE_LABELS: Record<ApiKeyScopeLevel, string> = {
   project: "Proyecto",
@@ -45,85 +48,50 @@ const SCOPE_LABELS: Record<ApiKeyScopeLevel, string> = {
   user: "Usuario",
 };
 
-export default function WorkspaceAgents() {
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return TAB_ITEMS.some((tab) => tab.id === value);
+}
+
+/** Ajustes del workspace. El nombre histórico del archivo se conserva para un diff pequeño de PR-B. */
+export default function WorkspaceSettings() {
   const { slug = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const [ws, setWs] = useState<Ws | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
   const [keys, setKeys] = useState<ApiKeyPublic[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [keyName, setKeyName] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const [keyProjectId, setKeyProjectId] = useState("");
-  const [scopeLevel, setScopeLevel] = useState<ApiKeyScopeLevel>("workspace");
-  const [scopes, setScopes] = useState<string[]>([...API_SCOPES]);
+  const [scopeLevel, setScopeLevel] = useState<Extract<ApiKeyScopeLevel, "workspace" | "user">>("workspace");
+  const [scopes, setScopes] = useState<ApiScope[]>([...API_SCOPES]);
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
-
-  const [agentName, setAgentName] = useState("");
-  const [agentProjectSlug, setAgentProjectSlug] = useState("");
-  const [creatingAgent, setCreatingAgent] = useState(false);
-
+  const [confirmedSaved, setConfirmedSaved] = useState(false);
   const [pendingRevoke, setPendingRevoke] = useState<ApiKeyPublic | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
-  const projectById = useMemo(() => {
-    const m = new Map<string, ProjectSummary>();
-    for (const p of projects) m.set(p.id, p);
-    return m;
-  }, [projects]);
-
-  const agentsForKeyProject = useMemo(
-    () => agents.filter((a) => a.project.id === keyProjectId),
-    [agents, keyProjectId]
-  );
-
-  const agentById = useMemo(() => {
-    const m = new Map<string, WorkspaceAgent>();
-    for (const agent of agents) m.set(agent.id, agent);
-    return m;
-  }, [agents]);
-
-  function applyAgentSelection(nextId: string) {
-    const previousName = agentsForKeyProject.find((a) => a.id === agentId)?.name ?? "";
-    const nextName = agentsForKeyProject.find((a) => a.id === nextId)?.name ?? "";
-    setAgentId(nextId);
-    setKeyName((current) =>
-      current.trim() === "" || current === previousName ? nextName : current
-    );
-  }
-
-  const selectedAgent = agentsForKeyProject.find((a) => a.id === agentId) ?? null;
-  const nameIsDerived = selectedAgent !== null && keyName === selectedAgent.name;
+  const requestedTab = params.get("tab");
+  const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : "general";
+  const hasReadScope = scopes.some((scope) => scope.endsWith(":read"));
+  const workspaceKeys = useMemo(() => keys.filter((key) => key.scopeLevel !== "project"), [keys]);
 
   async function load() {
     setError(null);
     try {
-      const [wsRes, projRes, agentsRes] = await Promise.all([
-        api.workspaces.get(slug),
-        api.projects.list(slug),
-        api.agents.listWorkspace(slug),
-      ]);
-      // listApiKeys/listAuditLogs son admin+ en el backend: pedirlas como
-      // member/viewer solo produce un 403. En vez de disfrazarlo de "sin datos"
-      // (catch a []), directamente no se piden y la UI no muestra esas secciones.
-      const canManageNow = wsRes.workspace.role === "owner" || wsRes.workspace.role === "admin";
-      const [keysRes, auditRes] = canManageNow
+      const [wsRes, projectsRes] = await Promise.all([api.workspaces.get(slug), api.projects.list(slug)]);
+      const canManage = wsRes.workspace.role === "owner" || wsRes.workspace.role === "admin";
+      const [keysRes, auditRes] = canManage
         ? await Promise.all([api.apiKeys.list(slug), api.audit.list(slug)])
         : [{ apiKeys: [] as ApiKeyPublic[] }, { auditLogs: [] as AuditLog[] }];
       setWs(wsRes.workspace);
-      setProjects(projRes.projects);
-      setAgents(agentsRes.agents);
+      setProjects(projectsRes.projects);
       setKeys(keysRes.apiKeys);
       setLogs(auditRes.auditLogs);
-      if (!keyProjectId && projRes.projects[0]) setKeyProjectId(projRes.projects[0].id);
-      if (!agentProjectSlug && projRes.projects[0]) setAgentProjectSlug(projRes.projects[0].slug);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo cargar Agentes");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo cargar Ajustes");
     } finally {
       setLoading(false);
     }
@@ -135,54 +103,38 @@ export default function WorkspaceAgents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  function toggleScope(s: string) {
-    setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  useEffect(() => {
+    if (!newKey || confirmedSaved) return;
+    function beforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [newKey, confirmedSaved]);
+
+  function selectTab(nextTab: SettingsTab) {
+    const next = new URLSearchParams(params);
+    next.set("tab", nextTab);
+    setParams(next);
   }
 
-  async function createAgent(e: React.FormEvent) {
-    e.preventDefault();
-    if (agentName.trim().length < 2 || !agentProjectSlug) return;
-    setCreatingAgent(true);
-    setError(null);
-    try {
-      await api.agents.create(slug, agentProjectSlug, agentName.trim());
-      track("agent_registered");
-      setAgentName("");
-      await load();
-    } catch (e) {
-      track("agent_registered_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo crear el agente");
-    } finally {
-      setCreatingAgent(false);
-    }
-  }
-
-  async function createKey(e: React.FormEvent) {
-    e.preventDefault();
-    if (keyName.trim().length < 2 || scopes.length === 0) return;
-    if (scopeLevel === "project" && !keyProjectId) {
-      setError("Elige un proyecto para una key de alcance proyecto");
-      return;
-    }
+  async function createKey(event: React.FormEvent) {
+    event.preventDefault();
+    if (keyName.trim().length < 2 || !hasReadScope) return;
     setCreating(true);
     setError(null);
     setNewKey(null);
     try {
-      const r = await api.apiKeys.create(slug, {
-        name: keyName.trim(),
-        scopeLevel,
-        projectId: scopeLevel === "project" ? keyProjectId : undefined,
-        agentId: scopeLevel === "project" && agentId ? agentId : undefined,
-        scopes,
-      });
+      const result = await api.apiKeys.create(slug, { name: keyName.trim(), scopeLevel, scopes });
       track("api_key_created", { scope_level: scopeLevel });
-      setNewKey(r.key);
-      applyAgentSelection("");
+      setNewKey(result.key);
+      setConfirmedSaved(false);
       setKeyName("");
       await load();
-    } catch (e) {
-      track("api_key_created_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo crear la API key");
+    } catch (err) {
+      track("api_key_created_failed", { reason: analyticsFailureReason(err) });
+      setError(err instanceof ApiError ? err.message : "No se pudo crear la API key");
     } finally {
       setCreating(false);
     }
@@ -197,426 +149,150 @@ export default function WorkspaceAgents() {
       track("api_key_revoked");
       setPendingRevoke(null);
       await load();
-    } catch (e) {
-      setRevokeError(e instanceof ApiError ? e.message : "No se pudo revocar la API key");
+    } catch (err) {
+      setRevokeError(err instanceof ApiError ? err.message : "No se pudo revocar la API key");
     } finally {
       setRevoking(false);
     }
   }
 
-  const snippet = useMemo(() => {
-    const key = newKey ?? "<TU_API_KEY>";
-    return `curl -X POST ${MCP_URL} \\
-  -H "Authorization: Bearer ${key}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
-  }, [newKey]);
-
-  const systemPrompt = useMemo(() => {
-    const referenceProject = projects.find((p) => p.id === keyProjectId);
-    if (scopeLevel === "project" && !referenceProject) return null;
-    return buildAgentPrompt({
-      workspaceSlug: slug,
-      target: scopeLevel === "project"
-        ? { scopeLevel: "project", project: { slug: referenceProject!.slug, id: referenceProject!.id } }
-        : {
-            scopeLevel,
-            ...(referenceProject ? { referenceProject: { slug: referenceProject.slug, id: referenceProject.id } } : {}),
-          },
-      scopes: scopes as ApiScope[],
-      keyRef: { kind: "plaintext", key: newKey ?? "<TU_API_KEY>" },
-      mcpUrl: MCP_URL,
-    });
-  }, [newKey, slug, scopeLevel, keyProjectId, projects, scopes]);
+  const prompt = useMemo(
+    () => newKey
+      ? buildAgentPrompt({
+          workspaceSlug: slug,
+          target: { scopeLevel },
+          scopes,
+          keyRef: { kind: "plaintext", key: newKey },
+          mcpUrl: MCP_URL,
+        })
+      : null,
+    [newKey, scopeLevel, scopes, slug]
+  );
 
   if (loading) {
     return (
       <div>
         <Skeleton className="mb-3 h-3 w-24" />
         <Skeleton className="mb-8 h-9 w-48" />
-        <div className="space-y-6">
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={2} />
-          <SkeletonCard lines={3} />
-        </div>
+        <div className="space-y-6"><SkeletonCard lines={3} /><SkeletonCard lines={3} /></div>
       </div>
     );
   }
 
-  if (!ws) {
-    return (
-      <Card>
-        <ErrorText>{error ?? "Workspace no encontrado"}</ErrorText>
-      </Card>
-    );
-  }
+  if (!ws) return <Card><ErrorText>{error ?? "Workspace no encontrado"}</ErrorText></Card>;
 
   const canManage = ws.role === "owner" || ws.role === "admin";
+  if (!canManage) {
+    return (
+      <div>
+        <Link to={`/w/${slug}`} className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">← {ws.name}</Link>
+        <PageHeader title="Ajustes" />
+        <Card><ErrorText>Solo owner y admin pueden gestionar los ajustes de este workspace.</ErrorText></Card>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <Link to={`/w/${slug}`} className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">
-        ← {ws.name}
-      </Link>
-      <PageHeader
-        title="Agentes"
-        description="MCP, API keys, Telegram y actividad de agentes en este workspace."
-      />
-
-      <div className="space-y-6">
+      <Link to={`/w/${slug}`} className="mb-1 block text-body-sm text-ink-400 hover:text-ink-700">← {ws.name}</Link>
+      <PageHeader title="Ajustes" description="Gestiona el workspace, sus credenciales, integración y actividad." actions={<Badge tone="neutral" mono>{ws.role}</Badge>} />
+      <Tabs items={[...TAB_ITEMS]} value={tab} onChange={(id) => selectTab(id as SettingsTab)} className="mb-6" />
+      <section role="tabpanel" aria-label={TAB_ITEMS.find((item) => item.id === tab)?.label} className="space-y-6">
         <ErrorText>{error}</ErrorText>
 
-        <TelegramChannelCard
-          projects={projects.map((p) => ({ id: p.id, slug: p.slug, name: p.name }))}
-        />
+        {tab === "general" ? <SettingsSection key={ws.id} ws={ws} onRenamed={setWs} /> : null}
 
-        <Card>
-          <h3 className="text-h4 text-ink-900">Conectar un agente por MCP</h3>
-          <p className="mt-2 text-body-sm text-ink-600">
-            Tu agente se conecta a este endpoint con una API key. El alcance define si opera en
-            un proyecto, en todo el workspace o en todos tus workspaces (pasando{" "}
-            <code className="font-mono text-caption">projectId</code>).
-          </p>
-          <div className="mt-4 space-y-3">
-            <CodeBlock title="MCP ENDPOINT">{MCP_URL}</CodeBlock>
-            <CodeBlock command={snippet} title="bash" />
-          </div>
-        </Card>
+        {tab === "credentials" ? (
+          <>
+            <Card>
+              <h2 className="text-h4 text-ink-900">Credenciales de alcance amplio</h2>
+              <p className="mt-2 text-body-sm text-ink-600">Estas keys operan en el workspace o en tus workspaces. Para una key de proyecto, usa Conexión desde la fila del agente en Equipo.</p>
+              <form onSubmit={createKey} className="mt-5 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Alcance">
+                    <Select value={scopeLevel} onChange={(event) => setScopeLevel(event.target.value as Extract<ApiKeyScopeLevel, "workspace" | "user">)}>
+                      <option value="workspace">Workspace</option>
+                      <option value="user">Usuario</option>
+                    </Select>
+                  </Field>
+                  <Field label="Nombre de la key" hint={keyName.trim().length < 2 ? "Mínimo 2 caracteres." : undefined}>
+                    <Input value={keyName} onChange={(event) => setKeyName(event.target.value)} placeholder="Ej: reportes-global" required />
+                  </Field>
+                </div>
+                <Field label="Permisos" hint="Elige un preset o personaliza por dominio. Escritura añade su lectura correspondiente.">
+                  <ScopePicker value={scopes} onChange={setScopes} />
+                </Field>
+                {!hasReadScope ? <ErrorText>Elige al menos un permiso de lectura: sin ninguno el agente no puede descubrir nada.</ErrorText> : null}
+                <Button type="submit" disabled={creating || keyName.trim().length < 2 || !hasReadScope}>{creating ? "Generando…" : "Generar API key"}</Button>
+              </form>
+            </Card>
 
-        <Card>
-          <h3 className="text-h4 text-ink-900">Prompt para tu agente</h3>
-          <p className="mt-2 text-body-sm text-ink-600">
-            Pega esto como <span className="font-medium">system prompt</span> de tu agente. Genera
-            una API key abajo y reemplázala en el prompt.
-          </p>
-          <div className="mt-4">
-            {systemPrompt ? (
-              <CodeBlock command={systemPrompt.text} title="SYSTEM PROMPT" />
-            ) : (
-              <ErrorText>Elige un proyecto antes de generar un prompt de alcance proyecto.</ErrorText>
-            )}
-          </div>
-        </Card>
-
-        {canManage && (
-          <Card>
-            <h3 className="text-h4 text-ink-900">Generar API key</h3>
-            <form onSubmit={createKey} className="mt-4 space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Alcance">
-                  <Select
-                    value={scopeLevel}
-                    onChange={(e) => {
-                      setScopeLevel(e.target.value as ApiKeyScopeLevel);
-                      applyAgentSelection("");
-                    }}
-                  >
-                    {API_KEY_SCOPE_LEVELS.map((level) => (
-                      <option key={level} value={level}>
-                        {SCOPE_LABELS[level]}
-                      </option>
+            <Card>
+              <h2 className="text-h4 text-ink-900">API keys ({workspaceKeys.length})</h2>
+              <div className="mt-4">
+                {workspaceKeys.length === 0 ? <EmptyState title="Sin credenciales amplias" description="Genera una API key para conectar un agente al workspace o a tu cuenta." /> : (
+                  <div className="divide-y divide-line-100">
+                    {workspaceKeys.map((key) => (
+                      <div key={key.id} className="flex items-start justify-between gap-3 -mx-6 px-6 py-3 hover:bg-surface-50">
+                        <div className="min-w-0">
+                          <p className="text-body font-medium text-ink-900">{key.name} <code className="font-mono text-caption text-ink-400">{key.prefix}…</code></p>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <Badge tone="brand" mono>{SCOPE_LABELS[key.scopeLevel as ApiKeyScopeLevel]}</Badge>
+                            {key.scopes.map((scope) => <Badge key={scope} tone="neutral" mono>{scope}</Badge>)}
+                          </div>
+                          <p className="mt-1 font-mono text-caption text-ink-400">creada {new Date(key.createdAt).toLocaleString()} · {key.lastUsedAt ? `último uso ${new Date(key.lastUsedAt).toLocaleString()}` : "sin usar aún"}</p>
+                        </div>
+                        <Button variant="danger" size="sm" onClick={() => setPendingRevoke(key)}>Revocar</Button>
+                      </div>
                     ))}
-                  </Select>
-                </Field>
-                {scopeLevel === "project" && (
-                  <>
-                    <Field label="Proyecto">
-                      <Select
-                        value={keyProjectId}
-                        onChange={(e) => {
-                          setKeyProjectId(e.target.value);
-                          applyAgentSelection("");
-                        }}
-                      >
-                        {projects.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field label="Agente">
-                      <Select value={agentId} onChange={(e) => applyAgentSelection(e.target.value)}>
-                        <option value="">— sin agente —</option>
-                        {agentsForKeyProject.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                  </>
+                  </div>
                 )}
-                <Field
-                  label="Nombre de la key"
-                  hint={
-                    nameIsDerived
-                      ? "Autocompletado desde el agente — puedes ajustarlo."
-                      : keyName.trim().length < 2
-                        ? "Mínimo 2 caracteres."
-                        : undefined
-                  }
-                >
-                  <Input
-                    placeholder="Ej: hermes-prod"
-                    value={keyName}
-                    onChange={(e) => setKeyName(e.target.value)}
-                  />
-                </Field>
               </div>
-              {scopeLevel !== "project" && (
-                <p className="text-body-sm text-ink-500">
-                  Las keys de alcance workspace y usuario no se pueden asociar a un agente; escribe
-                  el nombre de la key manualmente. Las tools de proyecto exigirán{" "}
-                  <code className="font-mono text-caption">projectId</code>. Usa{" "}
-                  <code className="font-mono text-caption">list_projects</code> para descubrirlos.
-                </p>
-              )}
-              <div>
-                <p className="mb-2 text-caption font-mono uppercase text-ink-500">Scopes</p>
-                <div className="flex flex-wrap gap-2">
-                  {API_SCOPES.map((s) => (
-                    <ToggleChip key={s} checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
-                      {s}
-                    </ToggleChip>
+            </Card>
+          </>
+        ) : null}
+
+        {tab === "telegram" ? <TelegramChannelCard projects={projects.map((project) => ({ id: project.id, slug: project.slug, name: project.name }))} /> : null}
+
+        {tab === "activity" ? (
+          <Card>
+            <h2 className="text-h4 text-ink-900">Actividad del workspace</h2>
+            <p className="mt-2 text-body-sm text-ink-600">Audit de lo que hacen las API keys y agentes en este workspace.</p>
+            <div className="mt-4">
+              {logs.length === 0 ? <EmptyState title="Sin actividad" description="Las acciones de agentes y keys aparecerán aquí." /> : (
+                <div className="divide-y divide-line-100">
+                  {logs.slice(0, 50).map((log) => (
+                    <div key={log.id} className="flex items-center justify-between -mx-6 px-6 py-2.5 hover:bg-surface-50">
+                      <span className="flex min-w-0 items-center gap-2"><Badge tone={log.actorType === "agent" ? "brand" : "neutral"} dot>{log.actorType}</Badge><span className="truncate text-body-sm text-ink-700">{log.actorName}</span><code className="truncate font-mono text-caption text-ink-700">{log.action}</code></span>
+                      <span className="shrink-0 font-mono text-caption text-ink-400">{new Date(log.createdAt).toLocaleString()}</span>
+                    </div>
                   ))}
                 </div>
-              </div>
-              <Button
-                type="submit"
-                disabled={creating || keyName.trim().length < 2 || scopes.length === 0}
-              >
-                {creating ? "Generando…" : "Generar API key"}
-              </Button>
-            </form>
-
-            {newKey && (
-              <div className="mt-4">
-                <p className="mb-2 text-body-sm font-medium text-amber-700">
-                  Copia esta key ahora — no se vuelve a mostrar.
-                </p>
-                <CodeBlock title="API KEY">{newKey}</CodeBlock>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {canManage && (
-          <Card>
-            <h3 className="text-h4 text-ink-900">API keys ({keys.length})</h3>
-            <div className="mt-4">
-              {keys.length === 0 ? (
-                <EmptyState
-                  title="Sin keys todavía"
-                  description="Genera una API key para que tu agente pueda autenticarse."
-                />
-              ) : (
-                <div className="divide-y divide-line-100">
-                  {keys.map((k) => {
-                    const proj = k.projectId ? projectById.get(k.projectId) : null;
-                    const agent = k.agentId ? agentById.get(k.agentId) : null;
-                    return (
-                      <div
-                        key={k.id}
-                        className="flex items-start justify-between gap-3 -mx-6 px-6 py-3 hover:bg-surface-50"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-body font-medium text-ink-900">
-                            {k.name}{" "}
-                            <code className="font-mono text-caption text-ink-400">{k.prefix}…</code>
-                          </p>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            <Badge tone="brand" mono>
-                              {SCOPE_LABELS[k.scopeLevel as ApiKeyScopeLevel]}
-                            </Badge>
-                            {proj && (
-                              <Badge tone="neutral" mono>
-                                {proj.slug}
-                              </Badge>
-                            )}
-                            {agent && (
-                              <Badge tone="success" mono>
-                                {agent.name}
-                              </Badge>
-                            )}
-                            {k.scopes.map((s) => (
-                              <Badge key={s} tone="neutral" mono>
-                                {s}
-                              </Badge>
-                            ))}
-                          </div>
-                          <p className="mt-1 font-mono text-caption text-ink-400">
-                            creada {new Date(k.createdAt).toLocaleString()} · {k.lastUsedAt
-                              ? `último uso ${new Date(k.lastUsedAt).toLocaleString()}`
-                              : "sin usar aún"}
-                          </p>
-                        </div>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => setPendingRevoke(k)}
-                        >
-                          Revocar
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
               )}
+              {logs.length > 50 ? <p className="mt-3 text-caption text-ink-400">Mostrando los 50 más recientes de {logs.length}.</p> : null}
             </div>
           </Card>
-        )}
+        ) : null}
+      </section>
 
-        <Card>
-          <h3 className="text-h4 text-ink-900">Agentes</h3>
-          <p className="mt-2 text-body-sm text-ink-600">
-            Los agentes viven en un proyecto; aquí ves todos los del workspace.
-          </p>
-          <form onSubmit={createAgent} className="mt-4 flex flex-wrap gap-2">
-            <Select
-              value={agentProjectSlug}
-              onChange={(e) => setAgentProjectSlug(e.target.value)}
-              aria-label="Proyecto del agente"
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.slug}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              placeholder="Nombre del agente (ej: hermes)"
-              value={agentName}
-              onChange={(e) => setAgentName(e.target.value)}
-              className="max-w-xs"
-              aria-label="Nombre del agente"
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              disabled={creatingAgent || projects.length === 0}
-            >
-              {creatingAgent ? "Añadiendo…" : "Añadir agente"}
-            </Button>
-          </form>
-          <div className="mt-4">
-            {agents.length === 0 ? (
-              <p className="text-body-sm text-ink-400">Sin agentes registrados.</p>
-            ) : (
-              <div className="divide-y divide-line-100">
-                {agents.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center justify-between gap-3 -mx-6 px-6 py-2.5 hover:bg-surface-50"
-                  >
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <span className="max-w-[14rem] truncate text-body font-medium text-ink-900">
-                        {a.name}
-                      </span>
-                      <Badge tone="neutral" mono>
-                        {a.project.slug}
-                      </Badge>
-                      <span className="font-mono text-caption text-ink-400">
-                        {a._count.apiKeys} keys
-                      </span>
-                    </div>
-                    <Link
-                      to={`/w/${slug}/p/${a.project.slug}`}
-                      className="shrink-0 text-caption text-blue-700 hover:underline"
-                    >
-                      Ir al proyecto
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {canManage && (
-          <Card>
-            <h3 className="text-h4 text-ink-900">Actividad del workspace</h3>
-            <p className="mt-2 text-body-sm text-ink-600">
-              Audit de lo que hacen las API keys y agentes en este workspace.
-            </p>
-            <div className="mt-4">
-              {logs.length === 0 ? (
-                <EmptyState
-                  title="Sin actividad"
-                  description="Las acciones de agentes y keys aparecerán aquí."
-                />
-              ) : (
-                <>
-                  <div className="divide-y divide-line-100">
-                    {logs.slice(0, 50).map((l) => (
-                      <div
-                        key={l.id}
-                        className="flex items-center justify-between -mx-6 px-6 py-2.5 hover:bg-surface-50"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Badge tone={l.actorType === "agent" ? "brand" : "neutral"} dot>
-                            {l.actorType}
-                          </Badge>
-                          <span className="truncate text-body-sm text-ink-700">{l.actorName}</span>
-                          <code className="truncate font-mono text-caption text-ink-700">
-                            {l.action}
-                          </code>
-                        </span>
-                        <span className="shrink-0 font-mono text-caption text-ink-400">
-                          {new Date(l.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {logs.length > 50 && (
-                    <p className="mt-3 text-caption text-ink-400">
-                      Mostrando los 50 más recientes de {logs.length}.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          </Card>
-        )}
-      </div>
-
-      {pendingRevoke && (
-        <Modal
-          title="Revocar API key"
-          onClose={() => {
-            if (!revoking) {
-              setPendingRevoke(null);
-              setRevokeError(null);
-            }
-          }}
-        >
+      {pendingRevoke ? (
+        <Modal title="Revocar API key" onClose={() => !revoking && setPendingRevoke(null)}>
           <div className="space-y-4">
             <ErrorText>{revokeError}</ErrorText>
-            <p className="text-body text-ink-700">
-              ¿Revocar{" "}
-              <span className="font-medium text-ink-900">{pendingRevoke.name}</span>{" "}
-              <code className="font-mono text-caption text-ink-400">{pendingRevoke.prefix}…</code>?
-              Esta acción no se puede deshacer: cualquier agente que use esta key perderá el
-              acceso de inmediato.
-            </p>
-            <div className="flex justify-end gap-2 border-t border-line-100 pt-4">
-              <Button
-                variant="secondary"
-                disabled={revoking}
-                onClick={() => {
-                  setPendingRevoke(null);
-                  setRevokeError(null);
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button variant="danger" disabled={revoking} onClick={confirmRevoke}>
-                {revoking ? "Revocando…" : "Revocar"}
-              </Button>
-            </div>
+            <p className="text-body text-ink-700">¿Revocar <span className="font-medium text-ink-900">{pendingRevoke.name}</span> <code className="font-mono text-caption text-ink-400">{pendingRevoke.prefix}…</code>? Esta acción no se puede deshacer: cualquier agente que use esta key perderá el acceso de inmediato.</p>
+            <div className="flex justify-end gap-2 border-t border-line-100 pt-4"><Button variant="secondary" disabled={revoking} onClick={() => setPendingRevoke(null)}>Cancelar</Button><Button variant="danger" disabled={revoking} onClick={confirmRevoke}>{revoking ? "Revocando…" : "Revocar"}</Button></div>
           </div>
         </Modal>
-      )}
+      ) : null}
+      {newKey && prompt ? (
+        <Modal title="Conectar" size="xl" dismissible={confirmedSaved} onClose={() => confirmedSaved && setNewKey(null)}>
+          <div className="space-y-4">
+            <ConnectPanel apiKey={newKey} mcpUrl={MCP_URL} prompt={prompt} onCopy={() => setConfirmedSaved(true)} />
+            <Checkbox checked={confirmedSaved} onChange={setConfirmedSaved}>Guardé la key — o el prompt, que la incluye.</Checkbox>
+            <Button type="button" className="w-full" disabled={!confirmedSaved} onClick={() => setNewKey(null)}>Ya la guardé, cerrar</Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
