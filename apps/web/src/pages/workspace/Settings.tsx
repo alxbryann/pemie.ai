@@ -52,7 +52,7 @@ function isSettingsTab(value: string | null): value is SettingsTab {
   return TAB_ITEMS.some((tab) => tab.id === value);
 }
 
-/** Ajustes del workspace. El nombre histórico del archivo se conserva para un diff pequeño de PR-B. */
+/** Ajustes del workspace, separados del flujo diario de Equipo. */
 export default function WorkspaceSettings() {
   const { slug = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -76,7 +76,11 @@ export default function WorkspaceSettings() {
   const requestedTab = params.get("tab");
   const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : "general";
   const hasReadScope = scopes.some((scope) => scope.endsWith(":read"));
-  const workspaceKeys = useMemo(() => keys.filter((key) => key.scopeLevel !== "project"), [keys]);
+  const credentialKeys = useMemo(
+    () => keys.filter((key) => key.scopeLevel !== "project" || key.agentId === null),
+    [keys]
+  );
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
 
   async function load() {
     setError(null);
@@ -206,7 +210,7 @@ export default function WorkspaceSettings() {
           <>
             <Card>
               <h2 className="text-h4 text-ink-900">Credenciales de alcance amplio</h2>
-              <p className="mt-2 text-body-sm text-ink-600">Estas keys operan en el workspace o en tus workspaces. Para una key de proyecto, usa Conexión desde la fila del agente en Equipo.</p>
+              <p className="mt-2 text-body-sm text-ink-600">Aquí generas keys de alcance workspace o usuario. Las keys de proyecto sin agente también se conservan aquí para que siempre puedas verlas y revocarlas; las asociadas a un agente viven en Equipo.</p>
               <form onSubmit={createKey} className="mt-5 space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Alcance">
@@ -228,16 +232,18 @@ export default function WorkspaceSettings() {
             </Card>
 
             <Card>
-              <h2 className="text-h4 text-ink-900">API keys ({workspaceKeys.length})</h2>
+              <h2 className="text-h4 text-ink-900">API keys ({credentialKeys.length})</h2>
               <div className="mt-4">
-                {workspaceKeys.length === 0 ? <EmptyState title="Sin credenciales amplias" description="Genera una API key para conectar un agente al workspace o a tu cuenta." /> : (
+                {credentialKeys.length === 0 ? <EmptyState title="Sin credenciales" description="Genera una API key para conectar un agente al workspace o a tu cuenta." /> : (
                   <div className="divide-y divide-line-100">
-                    {workspaceKeys.map((key) => (
+                    {credentialKeys.map((key) => (
                       <div key={key.id} className="flex items-start justify-between gap-3 -mx-6 px-6 py-3 hover:bg-surface-50">
                         <div className="min-w-0">
                           <p className="text-body font-medium text-ink-900">{key.name} <code className="font-mono text-caption text-ink-400">{key.prefix}…</code></p>
                           <div className="mt-1.5 flex flex-wrap gap-1.5">
                             <Badge tone="brand" mono>{SCOPE_LABELS[key.scopeLevel as ApiKeyScopeLevel]}</Badge>
+                            {key.scopeLevel === "project" && key.projectId ? <Badge tone="neutral" mono>{projectById.get(key.projectId)?.slug ?? "proyecto"}</Badge> : null}
+                            {key.scopeLevel === "project" && key.agentId === null ? <Badge tone="warning">sin agente</Badge> : null}
                             {key.scopes.map((scope) => <Badge key={scope} tone="neutral" mono>{scope}</Badge>)}
                           </div>
                           <p className="mt-1 font-mono text-caption text-ink-400">creada {new Date(key.createdAt).toLocaleString()} · {key.lastUsedAt ? `último uso ${new Date(key.lastUsedAt).toLocaleString()}` : "sin usar aún"}</p>

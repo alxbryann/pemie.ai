@@ -9,7 +9,7 @@ import Login from "./pages/Login.js";
 import Register from "./pages/Register.js";
 import Workspaces from "./pages/Workspaces.js";
 import Workspace from "./pages/Workspace.js";
-import WorkspaceSettings from "./pages/workspace/Agents.js";
+import WorkspaceSettings from "./pages/workspace/Settings.js";
 import Project from "./pages/Project.js";
 import AcceptInvite from "./pages/AcceptInvite.js";
 import Settings from "./pages/Settings.js";
