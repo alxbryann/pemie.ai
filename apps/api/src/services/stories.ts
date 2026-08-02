@@ -97,15 +97,23 @@ async function validateAssignee(projectId: string, assigneeId: string) {
     throw badRequest("El asignado no pertenece al proyecto", "assignee_mismatch");
 }
 
-/** Calcula la siguiente key (PRJ-N) a partir del prefijo del proyecto. */
+/**
+ * Reserva la siguiente key (PRJ-N) consumiendo el contador del proyecto.
+ *
+ * El contador vive en `projects.storySeq` y solo crece: derivarlo del máximo de
+ * las HUs vivas devolvía la key al pool al borrar la HU más alta, y una key
+ * reutilizada le roba a la HU nueva los commits de la anterior —
+ * `opGetStoryCommitProgress` busca por el texto de la key, no por id.
+ * El `increment` de Postgres es atómico, así que dos creaciones concurrentes
+ * reservan números distintos sin bloquear.
+ */
 async function nextStoryKey(projectId: string, prefix: string): Promise<string> {
-  const stories = await prisma.userStory.findMany({ where: { projectId }, select: { key: true } });
-  let max = 0;
-  for (const s of stories) {
-    const m = s.key.match(/-(\d+)$/);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `${prefix}-${max + 1}`;
+  const { storySeq } = await prisma.project.update({
+    where: { id: projectId },
+    data: { storySeq: { increment: 1 } },
+    select: { storySeq: true },
+  });
+  return `${prefix}-${storySeq}`;
 }
 
 /** Crea una HU (member+). */
@@ -118,8 +126,9 @@ export async function createStory(userId: string, projectId: string, input: Crea
  * Operación (ya autorizada): crea la HU con una key incremental por proyecto
  * y su tarjeta Kanban ya ligada (columna inicial del tablero), para que nunca
  * quede una HU huérfana sin tarjeta ni haga falta el paso manual de
- * create_card/link_story_to_card. Reintenta la HU si dos creaciones
- * concurrentes eligen la misma key (unique).
+ * create_card/link_story_to_card. El reintento cubre el caso residual de una
+ * key ya ocupada que el contador del proyecto no conocía (datos anteriores a
+ * PEM-20): cada vuelta reserva un número nuevo, nunca el mismo.
  */
 export async function opCreateStory(
   projectId: string,
@@ -266,22 +275,49 @@ export async function opUpdateStory(
   return prisma.userStory.update({ where: { id: story.id }, data });
 }
 
-/**
- * Elimina una HU (member+). Si tiene una Card vinculada en el Kanban, la FK
- * `cards.userStoryId` es `ON DELETE SET NULL` (migration.sql) — la DB
- * desvincula la tarjeta sola, no hace falta borrarla ni tocarla aquí.
- */
-export async function deleteStory(userId: string, storyId: string) {
+/** Elimina una HU (member+). */
+export async function deleteStory(userId: string, storyId: string, options: DeleteStoryOptions = {}) {
   const story = await getStoryById(storyId);
   if (!story) throw notFound("HU no encontrada");
   await projectWithAccess(userId, story.projectId, "member");
-  return opDeleteStory(story);
+  return opDeleteStory(story, options);
 }
 
-/** Operación (ya autorizada): elimina la HU ya cargada. */
-export async function opDeleteStory(story: { id: string }) {
+export interface DeleteStoryOptions {
+  /** Borrar también la tarjeta vinculada. Por defecto sí (PEM-19). */
+  deleteCard?: boolean;
+}
+
+/**
+ * Operación (ya autorizada): elimina la HU ya cargada y, salvo que se pida lo
+ * contrario, su tarjeta del Kanban.
+ *
+ * La FK `cards.userStoryId` es `ON DELETE SET NULL`, así que sin este paso la
+ * tarjeta sobrevive desvinculada. Eso tenía sentido cuando la tarjeta se creaba
+ * a mano y borrarla habría tirado trabajo humano; desde PEM-13 nace sola con la
+ * HU, de modo que conservarla ya no protege nada: deja una tarjeta huérfana con
+ * una key en el título que el proyecto puede volver a emitir.
+ *
+ * `deleteCard: false` conserva el comportamiento anterior para quien quiera
+ * quedarse con la tarjeta y su actividad.
+ */
+export async function opDeleteStory(
+  story: { id: string },
+  { deleteCard = true }: DeleteStoryOptions = {}
+) {
   try {
-    await prisma.userStory.delete({ where: { id: story.id } });
+    // En una transacción: un borrado a medias dejaría justo la tarjeta huérfana
+    // que este cambio viene a evitar. `deleteMany` en vez de `delete` porque no
+    // lanza P2025 con cero filas: si alguien se llevó la tarjeta con delete_card
+    // entre medio, la HU se borra igual y el 404 de abajo sigue significando lo
+    // que dice — que la HU no está, no que faltaba su tarjeta.
+    return await prisma.$transaction(async (tx) => {
+      const removed = deleteCard
+        ? await tx.card.deleteMany({ where: { userStoryId: story.id } })
+        : { count: 0 };
+      await tx.userStory.delete({ where: { id: story.id } });
+      return { ok: true, cardDeleted: removed.count > 0 };
+    });
   } catch (err) {
     // Carrera: otro borrado concurrente ya se la llevó entre el findUnique y
     // el delete. Devolver 404 (no encontrada), no un 500 genérico.
@@ -289,7 +325,6 @@ export async function opDeleteStory(story: { id: string }) {
       throw notFound("HU no encontrada");
     throw err;
   }
-  return { ok: true };
 }
 
 /**
@@ -328,12 +363,26 @@ export function opListContributors(projectId: string) {
   });
 }
 
-/** Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de la HU (ej. PRJ-123). */
+/**
+ * Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de la
+ * HU (ej. PRJ-123).
+ *
+ * El match va por regex y no por `contains`: como substring, «PEM-1» también
+ * aparece dentro de «PEM-19», así que cada HU de un dígito se quedaba con el
+ * avance de todas sus vecinas de dos. `\y` es la frontera de palabra de
+ * Postgres — exige que la key termine donde termina su número, y deja pasar
+ * paréntesis, dos puntos o fin de línea alrededor. `~*` conserva el match sin
+ * distinguir mayúsculas que traía `mode: "insensitive"`.
+ */
 export async function opGetStoryCommitProgress(story: { id: string; projectId: string; key: string }) {
-  const commits = await prisma.commit.findMany({
-    where: { projectId: story.projectId, message: { contains: story.key, mode: "insensitive" } },
-    orderBy: { committedAt: "desc" },
-    select: { id: true, sha: true, message: true, committedAt: true },
-  });
+  const commits = await prisma.$queryRaw<
+    Array<{ id: string; sha: string; message: string; committedAt: Date }>
+  >`
+    SELECT "id", "sha", "message", "committedAt"
+    FROM "commits"
+    WHERE "projectId" = ${story.projectId}
+      AND "message" ~* ('\\y' || ${story.key} || '\\y')
+    ORDER BY "committedAt" DESC
+  `;
   return { storyId: story.id, key: story.key, commitCount: commits.length, commits };
 }

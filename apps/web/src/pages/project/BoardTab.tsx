@@ -349,6 +349,19 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     });
   }
 
+  function applyCardDelete(cardId: string) {
+    setSelectedCard(null);
+    const prev = boardRef.current;
+    if (!prev) return;
+    commitBoard({
+      ...prev,
+      columns: prev.columns.map((col) => ({
+        ...col,
+        cards: col.cards.filter((c) => c.id !== cardId),
+      })),
+    });
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const prev = boardRef.current;
     if (!prev) return;
@@ -495,6 +508,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
           proj={proj}
           onClose={() => setSelectedCard(null)}
           onChanged={applyCardUpdate}
+          onDeleted={applyCardDelete}
         />
       )}
     </div>

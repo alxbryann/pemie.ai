@@ -38,7 +38,9 @@ export const ANALYTICS_EVENTS = {
   story_created_failed: ["reason"],
   // Nunca el texto de la HU, solo el tránsito de estado.
   story_status_changed: ["from_status", "to_status"],
-  story_deleted: [],
+  // `card_deleted` mide si el equipo acepta el default de arrastrar la tarjeta
+  // con la HU o lo desmarca: es lo que valida la decisión de PEM-19.
+  story_deleted: ["card_deleted"],
   story_delete_failed: ["reason"],
 
   // ─── Tablero (Kanban) ────────────────────────────────────────────────
@@ -46,6 +48,10 @@ export const ANALYTICS_EVENTS = {
   board_card_created_failed: ["reason"],
   // Disparado solo en el drop final, nunca durante el arrastre.
   board_card_moved: ["from_column", "to_column"],
+  // `had_story` distingue limpiar una tarjeta suelta de romper el vínculo con
+  // una HU viva, que es el caso que puede sorprender.
+  board_card_deleted: ["had_story"],
+  board_card_deleted_failed: ["reason"],
 
   // ─── Commits ─────────────────────────────────────────────────────────
   // Solo la interacción de filtrar, nunca cada fetch de commits.

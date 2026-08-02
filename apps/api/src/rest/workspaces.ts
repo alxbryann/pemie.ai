@@ -115,6 +115,8 @@ const moveCardSchema = z.object({
   columnId: z.string().min(1),
   order: z.number().optional(),
 });
+/** Valores aceptados en `?keepCard=`; cualquier otro es un 400, no un borrado. */
+const KEEP_CARD_VALUES = new Set(["1", "true", "0", "false"]);
 const domainCategorySchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
@@ -537,7 +539,17 @@ export function workspaceRoutes() {
   app.delete("/:slug/projects/:projectSlug/user-stories/:storyId", async (c) => {
     const user = requireUser(c);
     await resolveProject(c);
-    return c.json(await stories.deleteStory(user.id, c.req.param("storyId")));
+    // `?keepCard=1` conserva la tarjeta desvinculada; sin él se borra con la HU.
+    // Contra un default destructivo el parseo tiene que ser generoso con lo que
+    // la gente escribe y ruidoso con lo que no entiende: silencioso y estricto
+    // convertiría un `keepCard=true` en un borrado que nadie pidió.
+    const rawKeepCard = c.req.query("keepCard");
+    if (rawKeepCard !== undefined && !KEEP_CARD_VALUES.has(rawKeepCard))
+      throw badRequest("keepCard admite 1, true, 0 o false", "invalid_keep_card");
+    const keepCard = rawKeepCard === "1" || rawKeepCard === "true";
+    return c.json(
+      await stories.deleteStory(user.id, c.req.param("storyId"), { deleteCard: !keepCard })
+    );
   });
 
   // ─── F6: Kanban ────────────────────────────────────────────────────
@@ -561,6 +573,12 @@ export function workspaceRoutes() {
     const body = updateCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos de la tarjeta inválidos", "invalid_body");
     return c.json({ card: await board.updateCard(user.id, c.req.param("cardId"), body.data) });
+  });
+
+  app.delete("/:slug/projects/:projectSlug/board/cards/:cardId", async (c) => {
+    const user = requireUser(c);
+    await resolveProject(c);
+    return c.json(await board.deleteCard(user.id, c.req.param("cardId")));
   });
 
   app.get("/:slug/projects/:projectSlug/board/cards/:cardId/activities", async (c) => {

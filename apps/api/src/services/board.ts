@@ -364,6 +364,34 @@ export async function opUpdateCard(
   return updated;
 }
 
+/** Elimina una tarjeta del tablero (member+). */
+export async function deleteCard(userId: string, cardId: string) {
+  const card = await cardWithProject(cardId);
+  await projectWithAccess(userId, card.board.projectId, "member");
+  return opDeleteCard(card.id);
+}
+
+/**
+ * Operación (ya autorizada): elimina la tarjeta.
+ *
+ * La HU vinculada NO se toca: borrar la tarjeta es limpiar el tablero, no
+ * renunciar al trabajo que la HU describe. En sentido inverso sí hay cascada
+ * (`opDeleteStory`), porque desde PEM-13 la tarjeta nace como efecto de la HU.
+ * `CardActivity` cae por `onDelete: Cascade`: su historial habla de una tarjeta
+ * que ya no existe, y conservarlo dejaría actividad imposible de abrir.
+ */
+export async function opDeleteCard(cardId: string) {
+  try {
+    await prisma.card.delete({ where: { id: cardId } });
+  } catch (err) {
+    // Carrera con otro borrado entre la carga y el delete: 404, no 500.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025")
+      throw notFound("Tarjeta no encontrada");
+    throw err;
+  }
+  return { ok: true };
+}
+
 /** Actividad reciente de una tarjeta (viewer+). */
 export async function listCardActivities(userId: string, cardId: string, limit = 50) {
   const card = await cardWithProject(cardId);
