@@ -206,7 +206,7 @@ export function publicApiKey(k: ApiKey) {
     name: k.name,
     prefix: k.prefix,
     scopes: k.scopes as ApiScope[],
-    scopeLevel: (k.scopeLevel ?? "project") as ApiKeyScopeLevel,
+    scopeLevel: k.scopeLevel as ApiKeyScopeLevel,
     ownerUserId: k.ownerUserId,
     projectId: k.projectId,
     agentId: k.agentId,
@@ -290,7 +290,7 @@ export async function resolveProjectForKey(
   key: ApiKey,
   projectIdFromArgs?: string | null
 ): Promise<ResolvedProject> {
-  const level = (key.scopeLevel ?? "project") as ApiKeyScopeLevel;
+  const level = key.scopeLevel as ApiKeyScopeLevel;
 
   if (level === "project") {
     if (!key.projectId)
@@ -335,7 +335,7 @@ export async function resolveProjectForKey(
 export async function authorizeKeyForProject(key: ApiKey, scope: ApiScope, workspaceId: string) {
   requireScope(key, scope);
 
-  const level = (key.scopeLevel ?? "project") as ApiKeyScopeLevel;
+  const level = key.scopeLevel as ApiKeyScopeLevel;
   if (level === "project" && !key.ownerUserId) return;
 
   const ownerId = key.ownerUserId;
@@ -357,7 +357,7 @@ export async function authorizeKeyForProject(key: ApiKey, scope: ApiScope, works
 
 /** Lista workspaces donde el dueño de la key es miembro (workspace/user keys). */
 export async function listWorkspacesForKey(key: ApiKey) {
-  const level = (key.scopeLevel ?? "project") as ApiKeyScopeLevel;
+  const level = key.scopeLevel as ApiKeyScopeLevel;
   if (level === "project") {
     const ws = await prisma.workspace.findUnique({ where: { id: key.workspaceId } });
     return ws ? [{ id: ws.id, name: ws.name, slug: ws.slug }] : [];
@@ -382,7 +382,7 @@ export async function listWorkspacesForKey(key: ApiKey) {
 
 /** Lista proyectos accesibles para la key (opcionalmente filtrados por workspace). */
 export async function listProjectsForKey(key: ApiKey, workspaceId?: string) {
-  const level = (key.scopeLevel ?? "project") as ApiKeyScopeLevel;
+  const level = key.scopeLevel as ApiKeyScopeLevel;
 
   if (level === "project") {
     if (!key.projectId) return [];

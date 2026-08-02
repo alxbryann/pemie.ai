@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { API_SCOPES, type Role } from "@pemie/shared";
+import {
+  API_SCOPES,
+  SCOPE_BY_TYPE,
+  buildAgentPrompt,
+  type ApiScope,
+  type Role,
+} from "@pemie/shared";
 import {
   api,
   analyticsFailureReason,
@@ -13,12 +19,12 @@ import {
   type ApiKeyPublic,
 } from "../lib/api.js";
 import { track } from "../lib/analytics/index.js";
+import { CapabilityReceipt, ConnectPanel } from "../components/ConnectPanel.js";
 import {
   Badge,
   Button,
   Card,
   Checkbox,
-  CodeBlock,
   DangerZone,
   EmptyState,
   ErrorText,
@@ -38,6 +44,15 @@ import {
 
 /** Roles asignables desde el selector de la fila (no hay flujo de transferencia de owner). */
 const ASSIGNABLE_ROLES: Role[] = ["viewer", "member", "admin"];
+const MCP_URL = `${window.location.origin}/mcp`;
+const SEARCHABLE_SCOPES = Object.values(SCOPE_BY_TYPE);
+const READ_SCOPE_FOR_WRITE: Partial<Record<ApiScope, ApiScope>> = {
+  "reports:write": "reports:read",
+  "notes:write": "notes:read",
+  "stories:write": "stories:read",
+  "board:write": "board:read",
+  "objective:write": "objective:read",
+};
 
 export default function Workspace() {
   const { slug = "" } = useParams();
@@ -401,8 +416,12 @@ function TeamSection({
   const [agentErrors, setAgentErrors] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("choose");
+  const [regenerateAgent, setRegenerateAgent] = useState<WorkspaceAgent | undefined>();
+  const [connection, setConnection] = useState<{ agent: WorkspaceAgent; key: ApiKeyPublic } | null>(null);
+  const [teamLoad, setTeamLoad] = useState<{ status: "loading" } | { status: "ready" } | { status: "error"; message: string }>({ status: "loading" });
 
   function openAdd(mode: AddMode) {
+    setRegenerateAgent(undefined);
     setAddMode(mode);
     setAddOpen(true);
   }
@@ -418,19 +437,26 @@ function TeamSection({
   }
 
   async function load() {
-    const [membersRes, agentsRes] = await Promise.all([
-      api.workspaces.members(slug),
-      api.agents.listWorkspace(slug),
-    ]);
-    setMembers(membersRes.members);
-    setAgents(agentsRes.agents);
-    if (canManage) {
-      const [invRes, keysRes] = await Promise.all([
-        api.workspaces.invitations(slug),
-        api.apiKeys.list(slug),
+    setTeamLoad({ status: "loading" });
+    try {
+      const [membersRes, agentsRes] = await Promise.all([
+        api.workspaces.members(slug),
+        api.agents.listWorkspace(slug),
       ]);
-      setInvitations(invRes.invitations);
-      setKeys(keysRes.apiKeys);
+      setMembers(membersRes.members);
+      setAgents(agentsRes.agents);
+      if (canManage) {
+        const [invRes, keysRes] = await Promise.all([
+          api.workspaces.invitations(slug),
+          api.apiKeys.list(slug),
+        ]);
+        setInvitations(invRes.invitations);
+        setKeys(keysRes.apiKeys);
+      }
+      setTeamLoad({ status: "ready" });
+    } catch (error) {
+      setTeamLoad({ status: "error", message: error instanceof ApiError ? error.message : "No se pudo cargar el equipo" });
+      throw error;
     }
   }
 
@@ -530,7 +556,15 @@ function TeamSection({
       </div>
 
       <Card>
-        {members.length === 0 && agents.length === 0 ? (
+        {teamLoad.status === "loading" ? <SkeletonList rows={3} /> : null}
+        {teamLoad.status === "error" ? (
+          <Notice tone="danger">
+            <p>No pudimos cargar el equipo.</p>
+            <p className="mt-1">{teamLoad.message}</p>
+            <Button className="mt-3" variant="secondary" size="sm" onClick={() => void load()}>Reintentar</Button>
+          </Notice>
+        ) : null}
+        {teamLoad.status === "ready" && members.length === 0 && agents.length === 0 ? (
           <EmptyState
             title="Aún no hay nadie más en el equipo"
             description="Añade una persona por correo o crea un agente ligado a un proyecto."
@@ -542,7 +576,7 @@ function TeamSection({
               ) : undefined
             }
           />
-        ) : (
+        ) : teamLoad.status === "ready" ? (
           <div className="space-y-6">
             <div>
               <h3 className="mb-2 text-body-sm font-semibold text-ink-600">Personas</h3>
@@ -651,7 +685,10 @@ function TeamSection({
                             <Badge tone="neutral" mono>{agent.project.slug}</Badge>
                             {canManage ? (
                               latestKey ? (
-                                <Badge tone="brand" mono>{latestKey.scopeLevel}</Badge>
+                                <>
+                                  <Badge tone="brand" mono>{latestKey.scopeLevel}</Badge>
+                                  {latestKey.lastUsedAt === null ? <Badge tone="warning" mono>nunca conectado</Badge> : null}
+                                </>
                               ) : (
                                 <Badge tone="warning" mono>sin API key</Badge>
                               )
@@ -692,10 +729,26 @@ function TeamSection({
                                 </div>
                               </>
                             ) : (
-                              <IconTrashButton
-                                label={`Eliminar el agente ${agent.name}`}
-                                onClick={() => setAgentConfirmId(agent.id)}
-                              />
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (latestKey) setConnection({ agent, key: latestKey });
+                                    else {
+                                      setRegenerateAgent(agent);
+                                      setAddMode("agent");
+                                      setAddOpen(true);
+                                    }
+                                  }}
+                                >
+                                  {latestKey ? "Conexión" : "Generar key"}
+                                </Button>
+                                <IconTrashButton
+                                  label={`Eliminar el agente ${agent.name}`}
+                                  onClick={() => setAgentConfirmId(agent.id)}
+                                />
+                              </div>
                             )}
                             {agentErrors[agent.id] ? (
                               <ErrorText>{agentErrors[agent.id]}</ErrorText>
@@ -709,7 +762,7 @@ function TeamSection({
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </Card>
 
       {canManage && (lastInvite || invitations.length > 0) ? (
@@ -772,7 +825,36 @@ function TeamSection({
           onClose={() => setAddOpen(false)}
           onInvite={invitePerson}
           onChanged={load}
+          existingAgent={regenerateAgent}
         />
+      ) : null}
+      {canManage && connection ? (
+        <Modal title={`Conexión · ${connection.agent.name}`} onClose={() => setConnection(null)} size="xl">
+          <div className="space-y-4">
+            <Notice tone="info">La key no se puede recuperar: solo guardamos su hash. Este prompt usa su prefijo real.</Notice>
+            <ConnectPanel
+              showKey={false}
+              apiKey={`${connection.key.prefix}…`}
+              mcpUrl={MCP_URL}
+              prompt={buildAgentPrompt({
+                workspaceSlug: slug,
+                target: { scopeLevel: "project", project: { slug: connection.agent.project.slug, id: connection.agent.project.id } },
+                scopes: connection.key.scopes as ApiScope[],
+                keyRef: { kind: "prefix", prefix: connection.key.prefix },
+                mcpUrl: MCP_URL,
+              })}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConnection(null)}>Cerrar</Button>
+              <Button onClick={() => {
+                setRegenerateAgent(connection.agent);
+                setConnection(null);
+                setAddMode("agent");
+                setAddOpen(true);
+              }}>Generar nueva key</Button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </section>
   );
@@ -787,6 +869,7 @@ function AddTeamModal({
   onClose,
   onInvite,
   onChanged,
+  existingAgent,
 }: {
   slug: string;
   projects: ProjectSummary[];
@@ -794,13 +877,14 @@ function AddTeamModal({
   onClose: () => void;
   onInvite: (email: string) => Promise<Invitation>;
   onChanged: () => Promise<void>;
+  existingAgent?: WorkspaceAgent;
 }) {
   const [mode, setMode] = useState<AddMode>(initialMode);
   const [email, setEmail] = useState("");
-  const [agentProjectSlug, setAgentProjectSlug] = useState(projects[0]?.slug ?? "");
-  const [agentName, setAgentName] = useState("");
+  const [agentProjectSlug, setAgentProjectSlug] = useState(existingAgent?.project.slug ?? projects[0]?.slug ?? "");
+  const [agentName, setAgentName] = useState(existingAgent?.name ?? "");
   const [scopes, setScopes] = useState<string[]>([...API_SCOPES]);
-  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>(existingAgent?.id ?? null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [confirmedSaved, setConfirmedSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -809,15 +893,47 @@ function AddTeamModal({
 
   const selectedProject = projects.find((project) => project.slug === agentProjectSlug);
   const isCredential = mode === "credential" && Boolean(newKey);
+  const isExistingAgent = Boolean(existingAgent);
+  const hasSearchableScope = scopes.some((scope) => SEARCHABLE_SCOPES.includes(scope as ApiScope));
   const canCreateAgent = Boolean(
-    selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && !busy
+    selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && hasSearchableScope && !busy
   );
 
-  function toggleScope(scope: string) {
-    setScopes((current) =>
-      current.includes(scope) ? current.filter((item) => item !== scope) : [...current, scope]
-    );
+  function toggleScope(scope: ApiScope) {
+    setScopes((current) => {
+      if (current.includes(scope)) {
+        const writesDependingOnScope = Object.entries(READ_SCOPE_FOR_WRITE)
+          .filter(([, read]) => read === scope)
+          .map(([write]) => write);
+        return current.filter((item) => item !== scope && !writesDependingOnScope.includes(item));
+      }
+      const readScope = READ_SCOPE_FOR_WRITE[scope];
+      return [...new Set([...current, scope, ...(readScope ? [readScope] : [])])];
+    });
   }
+
+  const capabilityPreview = useMemo(
+    () => selectedProject
+      ? buildAgentPrompt({
+          workspaceSlug: slug,
+          target: { scopeLevel: "project", project: { slug: selectedProject.slug, id: selectedProject.id } },
+          scopes: scopes as ApiScope[],
+          keyRef: { kind: "plaintext", key: "<API_KEY_RECIÉN_CREADA>" },
+          mcpUrl: MCP_URL,
+        })
+      : null,
+    [selectedProject, scopes, slug]
+  );
+
+  useEffect(() => {
+    if (!isCredential || confirmedSaved) return;
+    function beforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [isCredential, confirmedSaved]);
 
   async function submitPerson(e: React.FormEvent) {
     e.preventDefault();
@@ -890,9 +1006,9 @@ function AddTeamModal({
 
   return (
     <Modal
-      title={isCredential ? "Guarda la API key" : "Añadir al equipo"}
+      title={isCredential ? "3 · Conectar" : existingAgent ? `Generar key · ${existingAgent.name}` : "Añadir al equipo"}
       onClose={onClose}
-      wide={mode === "agent" || mode === "credential"}
+      size={mode === "credential" ? "xl" : mode === "agent" ? "lg" : undefined}
       dismissible={!isCredential}
     >
       {mode === "choose" ? (
@@ -948,7 +1064,7 @@ function AddTeamModal({
           />
         ) : (
           <form onSubmit={createOrRetryAgent} className="space-y-4">
-            {createdAgentId ? (
+            {createdAgentId && !isExistingAgent ? (
               <Notice tone="success">
                 <p className="font-semibold">Agente creado</p>
                 <p className="mt-1">La key se puede reintentar sin crear otro agente.</p>
@@ -989,26 +1105,28 @@ function AddTeamModal({
             <Field label="Alcance" hint="Los agentes recién creados empiezan ligados a su proyecto.">
               <Badge tone="brand" mono>project</Badge>
             </Field>
-            <Field label="Permisos de la primera API key" hint="Puedes ajustar estos permisos más adelante desde el hub.">
+            <Field label="Permisos de la primera API key" hint="Elige al menos uno que permita buscar; escritura añade su lectura correspondiente.">
               <div className="flex flex-wrap gap-2">
                 {API_SCOPES.map((scope) => (
                   <ToggleChip
                     key={scope}
                     checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope)}
+                    onChange={() => toggleScope(scope as ApiScope)}
                   >
                     {scope}
                   </ToggleChip>
                 ))}
               </div>
             </Field>
+            {capabilityPreview ? <CapabilityReceipt prompt={capabilityPreview} /> : null}
+            {!hasSearchableScope ? <ErrorText>Elige uno de estos permisos para que el agente pueda buscar: {SEARCHABLE_SCOPES.join(", ")}.</ErrorText> : null}
             <ErrorText>{error}</ErrorText>
             <div className="flex justify-between gap-2">
               <Button type="button" variant="ghost" onClick={() => setMode("choose")} disabled={busy || Boolean(createdAgentId)}>
                 Atrás
               </Button>
               <Button type="submit" disabled={!canCreateAgent}>
-                {busy ? "Guardando…" : createdAgentId ? "Reintentar API key" : "Crear agente y API key"}
+                {busy ? "Guardando…" : isExistingAgent ? "Generar nueva API key" : createdAgentId ? "Reintentar API key" : "Crear agente y API key"}
               </Button>
             </div>
           </form>
@@ -1017,14 +1135,21 @@ function AddTeamModal({
 
       {mode === "credential" && newKey ? (
         <div className="space-y-4">
-          <Notice tone="warning">
-            Esta key solo se muestra ahora. Guárdala antes de cerrar este diálogo.
-          </Notice>
-          <CodeBlock title="API key">{newKey}</CodeBlock>
+          <ConnectPanel
+            apiKey={newKey}
+            mcpUrl={MCP_URL}
+            prompt={buildAgentPrompt({
+              workspaceSlug: slug,
+              target: { scopeLevel: "project", project: { slug: selectedProject!.slug, id: selectedProject!.id } },
+              scopes: scopes as ApiScope[],
+              keyRef: { kind: "plaintext", key: newKey },
+              mcpUrl: MCP_URL,
+            })}
+            onCopy={() => setConfirmedSaved(true)}
+          />
           <Checkbox checked={confirmedSaved} onChange={setConfirmedSaved}>
-            Guardé la key en un lugar seguro o la copié manualmente.
+            Guardé la key — o el prompt, que la incluye.
           </Checkbox>
-          <p className="text-caption text-ink-400">El texto de la key se puede seleccionar si el portapapeles no está disponible.</p>
           <Button type="button" className="w-full" disabled={!confirmedSaved} onClick={onClose}>
             Ya la guardé, cerrar
           </Button>

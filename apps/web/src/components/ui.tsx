@@ -2,7 +2,7 @@
 // Reglas del sistema: radios sm/md/lg, borde hairline, sombra fría, acento azul único,
 // mono (IBM Plex) para etiquetas, comandos y métricas.
 
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -334,12 +334,14 @@ export function CodeBlock({
   command,
   title = "bash",
   copyable = true,
+  onCopy,
   className = "",
 }: {
   children?: ReactNode;
   command?: string;
   title?: string;
   copyable?: boolean;
+  onCopy?: () => void;
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -347,6 +349,7 @@ export function CodeBlock({
 
   function copy() {
     void navigator.clipboard?.writeText(text);
+    onCopy?.();
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   }
@@ -359,13 +362,13 @@ export function CodeBlock({
         <span className="h-2.5 w-2.5 rounded-pill bg-[#ff5f57]" />
         <span className="h-2.5 w-2.5 rounded-pill bg-[#febc2e]" />
         <span className="h-2.5 w-2.5 rounded-pill bg-[#28c840]" />
-        <span className="ml-1.5 text-mono-label text-ink-400">{title}</span>
+        <span className="ml-1.5 text-mono-label text-ink-300">{title}</span>
         {copyable && text ? (
           <button
             type="button"
             onClick={copy}
             className={`ml-auto text-mono-label transition-colors ${
-              copied ? "text-blue-300" : "text-ink-400 hover:text-white"
+              copied ? "text-blue-300" : "text-ink-300 hover:text-white"
             }`}
           >
             {copied ? "copied" : "copy"}
@@ -595,17 +598,46 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  size,
   dismissible = true,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  size?: "md" | "lg" | "xl";
   dismissible?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const first = dialog?.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    first?.focus();
+    return () => previousFocus.current?.focus();
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (dismissible && e.key === "Escape") onClose();
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )];
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -618,11 +650,12 @@ export function Modal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal
         aria-label={title}
         className={`max-h-[85vh] w-full min-w-0 overflow-hidden rounded-xl border border-line-200 bg-surface-0 shadow-lg ${
-          wide ? "max-w-2xl" : "max-w-lg"
+          size === "xl" ? "max-w-3xl" : size === "lg" || wide ? "max-w-2xl" : "max-w-lg"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
