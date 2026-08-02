@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   API_SCOPES,
-  SCOPE_BY_TYPE,
   buildAgentPrompt,
   type ApiScope,
   type Role,
@@ -45,7 +44,6 @@ import {
 /** Roles asignables desde el selector de la fila (no hay flujo de transferencia de owner). */
 const ASSIGNABLE_ROLES: Role[] = ["viewer", "member", "admin"];
 const MCP_URL = `${window.location.origin}/mcp`;
-const SEARCHABLE_SCOPES = Object.values(SCOPE_BY_TYPE);
 const READ_SCOPE_FOR_WRITE: Partial<Record<ApiScope, ApiScope>> = {
   "reports:write": "reports:read",
   "notes:write": "notes:read",
@@ -894,9 +892,9 @@ function AddTeamModal({
   const selectedProject = projects.find((project) => project.slug === agentProjectSlug);
   const isCredential = mode === "credential" && Boolean(newKey);
   const isExistingAgent = Boolean(existingAgent);
-  const hasSearchableScope = scopes.some((scope) => SEARCHABLE_SCOPES.includes(scope as ApiScope));
+  const hasReadScope = scopes.some((scope) => scope.endsWith(":read"));
   const canCreateAgent = Boolean(
-    selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && hasSearchableScope && !busy
+    selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && hasReadScope && !busy
   );
 
   function toggleScope(scope: ApiScope) {
@@ -1105,7 +1103,7 @@ function AddTeamModal({
             <Field label="Alcance" hint="Los agentes recién creados empiezan ligados a su proyecto.">
               <Badge tone="brand" mono>project</Badge>
             </Field>
-            <Field label="Permisos de la primera API key" hint="Elige al menos uno que permita buscar; escritura añade su lectura correspondiente.">
+            <Field label="Permisos de la primera API key" hint="Elige al menos un permiso de lectura; escritura añade su lectura correspondiente.">
               <div className="flex flex-wrap gap-2">
                 {API_SCOPES.map((scope) => (
                   <ToggleChip
@@ -1119,7 +1117,7 @@ function AddTeamModal({
               </div>
             </Field>
             {capabilityPreview ? <CapabilityReceipt prompt={capabilityPreview} /> : null}
-            {!hasSearchableScope ? <ErrorText>Elige uno de estos permisos para que el agente pueda buscar: {SEARCHABLE_SCOPES.join(", ")}.</ErrorText> : null}
+            {!hasReadScope ? <ErrorText>Elige al menos un permiso de lectura: sin ninguno el agente no puede descubrir nada.</ErrorText> : null}
             <ErrorText>{error}</ErrorText>
             <div className="flex justify-between gap-2">
               <Button type="button" variant="ghost" onClick={() => setMode("choose")} disabled={busy || Boolean(createdAgentId)}>
