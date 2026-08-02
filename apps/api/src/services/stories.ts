@@ -363,12 +363,26 @@ export function opListContributors(projectId: string) {
   });
 }
 
-/** Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de la HU (ej. PRJ-123). */
+/**
+ * Cuenta y lista los commits del proyecto cuyo mensaje referencia la key de la
+ * HU (ej. PRJ-123).
+ *
+ * El match va por regex y no por `contains`: como substring, «PEM-1» también
+ * aparece dentro de «PEM-19», así que cada HU de un dígito se quedaba con el
+ * avance de todas sus vecinas de dos. `\y` es la frontera de palabra de
+ * Postgres — exige que la key termine donde termina su número, y deja pasar
+ * paréntesis, dos puntos o fin de línea alrededor. `~*` conserva el match sin
+ * distinguir mayúsculas que traía `mode: "insensitive"`.
+ */
 export async function opGetStoryCommitProgress(story: { id: string; projectId: string; key: string }) {
-  const commits = await prisma.commit.findMany({
-    where: { projectId: story.projectId, message: { contains: story.key, mode: "insensitive" } },
-    orderBy: { committedAt: "desc" },
-    select: { id: true, sha: true, message: true, committedAt: true },
-  });
+  const commits = await prisma.$queryRaw<
+    Array<{ id: string; sha: string; message: string; committedAt: Date }>
+  >`
+    SELECT "id", "sha", "message", "committedAt"
+    FROM "commits"
+    WHERE "projectId" = ${story.projectId}
+      AND "message" ~* ('\\y' || ${story.key} || '\\y')
+    ORDER BY "committedAt" DESC
+  `;
   return { storyId: story.id, key: story.key, commitCount: commits.length, commits };
 }
