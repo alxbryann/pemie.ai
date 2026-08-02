@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import {
   API_SCOPES,
   API_KEY_SCOPE_LEVELS,
-  MCP_TOOL_NAMES,
+  buildAgentPrompt,
+  type ApiScope,
   type ApiKeyScopeLevel,
 } from "@pemie/shared";
 import {
@@ -43,80 +44,6 @@ const SCOPE_LABELS: Record<ApiKeyScopeLevel, string> = {
   workspace: "Workspace",
   user: "Usuario",
 };
-
-// Descripciones cortas por tool, indexadas contra MCP_TOOL_NAMES (única fuente de
-// verdad en @pemie/shared): el `Record` total obliga a TypeScript a fallar si una
-// tool se agrega/renombra/quita en un lado sin actualizar el otro.
-const TOOL_DESCRIPTIONS: Record<(typeof MCP_TOOL_NAMES)[number], string> = {
-  list_workspaces: "workspaces accesibles con tu key.",
-  list_projects: "proyectos accesibles (opcional: filtrar por workspaceId).",
-  get_project_context: "objetivo, stats de commits y último informe.",
-  list_commits: "commits del proyecto (filtrable por dominio o contribuidor).",
-  get_story_commit_progress: "commits que referencian la key de una HU.",
-  get_objective: "leer el objetivo (guarda historial).",
-  update_objective: "fijar el objetivo (guarda historial).",
-  get_evaluation: "últimos informes de avance.",
-  publish_report: "publica/actualiza un informe (idempotente por fecha+slot).",
-  list_notes: "notas del proyecto (filtrable por estado).",
-  answer_note: "responde una nota y opcionalmente la liga a un informe.",
-  list_user_stories: "HUs del proyecto (filtrable por estado/épica).",
-  create_user_story: "crea una HU (narrativa role/want/benefit + criterios Given/When/Then).",
-  update_user_story: "actualiza título, estado, prioridad o narrativa.",
-  assign_user_story: "asigna/desasigna una HU a un contribuidor (sincroniza su tarjeta).",
-  list_contributors: "contribuidores del proyecto (candidatos a asignar).",
-  list_board: "tablero con columnas y tarjetas.",
-  create_card: "crea una tarjeta (opcionalmente ligada a una HU).",
-  move_card: "mueve una tarjeta de columna.",
-  link_story_to_card: "liga una tarjeta existente a una HU sin tarjeta.",
-  search: "busca un texto en HUs, commits, notas y tarjetas (respeta los scopes de la key).",
-  create_note: "deja una nota o pregunta en el proyecto.",
-  get_user_story: "detalle de una sola HU por id.",
-  delete_user_story: "elimina una HU; su tarjeta se conserva desvinculada.",
-  update_card: "actualiza título, descripción, tipo, asignado o HU de una tarjeta.",
-  list_card_activities: "actividad de una tarjeta con el nombre del actor.",
-};
-
-// Agrupación solo para presentar el prompt sugerido; los nombres vienen de
-// MCP_TOOL_NAMES, así que un typo o una tool faltante no compila.
-const TOOL_GROUPS: { label: string; tools: (typeof MCP_TOOL_NAMES)[number][] }[] = [
-  { label: "Descubrimiento", tools: ["list_workspaces", "list_projects", "search"] },
-  {
-    label: "Contexto y commits",
-    tools: ["get_project_context", "list_commits", "get_story_commit_progress"],
-  },
-  {
-    label: "Objetivo e informes",
-    tools: ["get_objective", "update_objective", "get_evaluation", "publish_report"],
-  },
-  { label: "Notas (feedback)", tools: ["list_notes", "create_note", "answer_note"] },
-  {
-    label: "Historias de Usuario",
-    tools: [
-      "list_user_stories",
-      "get_user_story",
-      "create_user_story",
-      "update_user_story",
-      "assign_user_story",
-      "delete_user_story",
-      "list_contributors",
-    ],
-  },
-  {
-    label: "Kanban",
-    tools: [
-      "list_board",
-      "create_card",
-      "update_card",
-      "move_card",
-      "link_story_to_card",
-      "list_card_activities",
-    ],
-  },
-];
-
-const TOOLS_SECTION = TOOL_GROUPS.map(
-  (g) => `${g.label}:\n${g.tools.map((t) => `- ${t} — ${TOOL_DESCRIPTIONS[t]}`).join("\n")}`
-).join("\n\n");
 
 export default function WorkspaceAgents() {
   const { slug = "" } = useParams();
@@ -286,44 +213,21 @@ export default function WorkspaceAgents() {
   }, [newKey]);
 
   const systemPrompt = useMemo(() => {
-    const key = newKey ?? "<TU_API_KEY>";
-    const ref = projects.find((p) => p.id === keyProjectId);
-    const broadHint =
-      scopeLevel !== "project"
-        ? `
-## Alcance de tu API key (${scopeLevel})
-Tu key no está fijada a un solo proyecto. Antes de operar:
-1. Llama a list_workspaces y/o list_projects para descubrir IDs.
-2. Pasa projectId en CADA tool de proyecto (get_project_context, list_board, etc.).
-${ref ? `Proyecto de referencia al generar esta key: "${ref.slug}" (id ${ref.id}).` : ""}
-`
-        : `
-## Alcance
-Tu key está fijada al proyecto "${ref?.slug ?? "?"}" (id ${keyProjectId}). Puedes omitir projectId en las tools.
-`;
-    return `Eres un agente conectado a pemie.ai (workspace "${slug}").
-Tu trabajo es monitorear y documentar el avance del equipo: leer commits, mantener
-el objetivo, publicar informes, responder notas, y gestionar Historias de Usuario y el
-tablero Kanban.
-${broadHint}
-## Conexión (MCP · JSON-RPC 2.0 sobre HTTP)
-- Endpoint: ${MCP_URL}
-- Autenticación: cabecera "Authorization: Bearer ${key}"
-- Protocolo: envía POST con {"jsonrpc":"2.0","id":<n>,"method":<método>,"params":<obj>}
-- Descubre las herramientas con method "tools/list"; invócalas con method "tools/call"
-  y params {"name":"<tool>","arguments":{...}}.
-- Todo lo que haces queda auditado y está limitado por los scopes de tu API key.
-
-## Herramientas disponibles
-${TOOLS_SECTION}
-
-## Cómo operar
-1. Si tu key es amplia, lista proyectos y pasa projectId. Si es de proyecto, llama a get_project_context.
-2. Usa list_* para leer el estado real antes de crear o modificar nada.
-3. Sé idempotente: publish_report ya lo es por fecha+slot; evita duplicar HUs o tarjetas.
-4. Al escribir informes, fundaméntalos en list_commits y get_story_commit_progress, no inventes.
-5. Si una acción falla por scope o rol, informa qué falta en vez de reintentar a ciegas.`;
-  }, [newKey, slug, scopeLevel, keyProjectId, projects]);
+    const referenceProject = projects.find((p) => p.id === keyProjectId);
+    if (scopeLevel === "project" && !referenceProject) return null;
+    return buildAgentPrompt({
+      workspaceSlug: slug,
+      target: scopeLevel === "project"
+        ? { scopeLevel: "project", project: { slug: referenceProject!.slug, id: referenceProject!.id } }
+        : {
+            scopeLevel,
+            ...(referenceProject ? { referenceProject: { slug: referenceProject.slug, id: referenceProject.id } } : {}),
+          },
+      scopes: scopes as ApiScope[],
+      keyRef: { kind: "plaintext", key: newKey ?? "<TU_API_KEY>" },
+      mcpUrl: MCP_URL,
+    });
+  }, [newKey, slug, scopeLevel, keyProjectId, projects, scopes]);
 
   if (loading) {
     return (
@@ -386,7 +290,11 @@ ${TOOLS_SECTION}
             una API key abajo y reemplázala en el prompt.
           </p>
           <div className="mt-4">
-            <CodeBlock command={systemPrompt} title="SYSTEM PROMPT" />
+            {systemPrompt ? (
+              <CodeBlock command={systemPrompt.text} title="SYSTEM PROMPT" />
+            ) : (
+              <ErrorText>Elige un proyecto antes de generar un prompt de alcance proyecto.</ErrorText>
+            )}
           </div>
         </Card>
 
@@ -519,7 +427,7 @@ ${TOOLS_SECTION}
                           </p>
                           <div className="mt-1.5 flex flex-wrap gap-1.5">
                             <Badge tone="brand" mono>
-                              {SCOPE_LABELS[(k.scopeLevel ?? "project") as ApiKeyScopeLevel]}
+                              {SCOPE_LABELS[k.scopeLevel as ApiKeyScopeLevel]}
                             </Badge>
                             {proj && (
                               <Badge tone="neutral" mono>

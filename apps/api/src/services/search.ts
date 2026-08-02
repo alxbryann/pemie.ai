@@ -3,21 +3,10 @@
 // colección entera — y sin necesitar una tool distinta por tipo de entidad.
 
 import type { ApiKey } from "@prisma/client";
-import type { ApiScope } from "@pemie/shared";
+import { SCOPE_BY_TYPE, SEARCHABLE_TYPES, type ApiScope, type SearchableType } from "@pemie/shared";
 import { prisma } from "../db.js";
 import { badRequest } from "./errors.js";
 import { projectWithAccess } from "./ingest.js";
-
-export const SEARCHABLE_TYPES = ["story", "commit", "note", "card"] as const;
-export type SearchableType = (typeof SEARCHABLE_TYPES)[number];
-
-/** Scope de lectura que habilita cada tipo. */
-const SCOPE_BY_TYPE: Record<SearchableType, ApiScope> = {
-  story: "stories:read",
-  commit: "commits:read",
-  note: "notes:read",
-  card: "board:read",
-};
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
