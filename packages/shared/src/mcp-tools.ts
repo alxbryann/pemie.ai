@@ -90,7 +90,11 @@ export function describeToolAccess(access: ToolAccess): string {
   return "sin permiso adicional";
 }
 
-export type KeyRef = { kind: "plaintext"; key: string } | { kind: "prefix"; prefix: string };
+/** La key real, su prefijo recuperable o un marcador explícitamente no secreto. */
+export type KeyRef =
+  | { kind: "plaintext"; key: string }
+  | { kind: "prefix"; prefix: string }
+  | { kind: "placeholder"; label: string };
 
 export type PromptTarget =
   | { scopeLevel: "project"; project: { slug: string; id: string } }
@@ -115,7 +119,11 @@ export function buildAgentPrompt(input: {
     tool,
     needs: MCP_TOOLS[tool].access,
   }));
-  const key = input.keyRef.kind === "plaintext" ? input.keyRef.key : `${input.keyRef.prefix}…`;
+  const key = input.keyRef.kind === "plaintext"
+    ? input.keyRef.key
+    : input.keyRef.kind === "prefix"
+      ? `${input.keyRef.prefix}…`
+      : input.keyRef.label;
   const byGroup = new Map<ToolGroup, McpToolName[]>();
   for (const tool of included) {
     const group = MCP_TOOLS[tool].group;
