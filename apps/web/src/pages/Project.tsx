@@ -12,7 +12,7 @@ const TABS = [
   { id: "reports", label: "Objetivo e informes" },
   { id: "stories", label: "Historias de usuario" },
   { id: "board", label: "Kanban" },
-  { id: "agent", label: "Agente (MCP)" },
+  { id: "activity", label: "Actividad" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -43,19 +43,7 @@ export default function Project() {
       <PageHeader
         title={project.name}
         description={project.description ?? undefined}
-        actions={
-          <div className="flex items-center gap-2">
-            <Link
-              to={`/w/${slug}/agents`}
-              className="text-body-sm text-blue-700 hover:underline"
-            >
-              Agentes →
-            </Link>
-            <Badge tone="neutral" mono>
-              {project.key}
-            </Badge>
-          </div>
-        }
+        actions={<Badge tone="neutral" mono>{project.key}</Badge>}
       />
 
       <Tabs
@@ -69,7 +57,7 @@ export default function Project() {
       {tab === "reports" && <ReportsTab ws={slug} proj={projectSlug} />}
       {tab === "stories" && <StoriesTab ws={slug} proj={projectSlug} />}
       {tab === "board" && <BoardTab ws={slug} proj={projectSlug} />}
-      {tab === "agent" && <AgentTab ws={slug} proj={projectSlug} />}
+      {tab === "activity" && <AgentTab ws={slug} proj={projectSlug} />}
     </div>
   );
 }

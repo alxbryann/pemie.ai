@@ -19,6 +19,7 @@ import {
 } from "../lib/api.js";
 import { track } from "../lib/analytics/index.js";
 import { CapabilityReceipt, ConnectPanel } from "../components/ConnectPanel.js";
+import { ScopePicker } from "../components/ScopePicker.js";
 import {
   Badge,
   Button,
@@ -36,7 +37,6 @@ import {
   Skeleton,
   SkeletonCard,
   SkeletonList,
-  ToggleChip,
   TrashIcon,
   type BadgeTone,
 } from "../components/ui.js";
@@ -44,13 +44,6 @@ import {
 /** Roles asignables desde el selector de la fila (no hay flujo de transferencia de owner). */
 const ASSIGNABLE_ROLES: Role[] = ["viewer", "member", "admin"];
 const MCP_URL = `${window.location.origin}/mcp`;
-const READ_SCOPE_FOR_WRITE: Partial<Record<ApiScope, ApiScope>> = {
-  "reports:write": "reports:read",
-  "notes:write": "notes:read",
-  "stories:write": "stories:read",
-  "board:write": "board:read",
-  "objective:write": "objective:read",
-};
 
 export default function Workspace() {
   const { slug = "" } = useParams();
@@ -91,15 +84,21 @@ export default function Workspace() {
       </Link>
       <PageHeader
         title={ws.name}
-        actions={<Badge tone="neutral" mono>{ws.role}</Badge>}
+        actions={
+          <div className="flex items-center gap-3">
+            {canManage ? (
+              <Link to={`/w/${slug}/settings`} className="text-body-sm text-blue-700 hover:underline">
+                Ajustes
+              </Link>
+            ) : null}
+            <Badge tone="neutral" mono>{ws.role}</Badge>
+          </div>
+        }
       />
 
       <div className="space-y-8">
         <ProjectsSection slug={slug} projects={projects} onChange={loadCore} />
         <TeamSection slug={slug} projects={projects} canManage={canManage} />
-        {/* `key` por workspace: al cambiar de workspace se descarta el borrador de
-            nombre y el texto de confirmación del anterior. */}
-        {canManage && <SettingsSection key={ws.id} ws={ws} onRenamed={setWs} />}
       </div>
     </div>
   );
@@ -246,7 +245,7 @@ function ProjectsSection({
  * Vive en el detalle y no en la lista porque son acciones sobre *este* workspace
  * y el borrado necesita espacio para una confirmación seria.
  */
-function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws) => void }) {
+export function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws) => void }) {
   const navigate = useNavigate();
   const [name, setName] = useState(ws.name);
   const [saving, setSaving] = useState(false);
@@ -296,7 +295,7 @@ function SettingsSection({ ws, onRenamed }: { ws: Ws; onRenamed: (workspace: Ws)
 
   return (
     <section>
-      <h2 className="mb-4 text-h3 text-ink-900">Ajustes</h2>
+      <h2 className="mb-4 text-h3 text-ink-900">General</h2>
       <div className="space-y-4">
         <Card>
           <form onSubmit={onRename} className="flex flex-wrap items-end gap-3">
@@ -897,26 +896,13 @@ function AddTeamModal({
     selectedProject && agentName.trim().length >= 2 && scopes.length > 0 && hasReadScope && !busy
   );
 
-  function toggleScope(scope: ApiScope) {
-    setScopes((current) => {
-      if (current.includes(scope)) {
-        const writesDependingOnScope = Object.entries(READ_SCOPE_FOR_WRITE)
-          .filter(([, read]) => read === scope)
-          .map(([write]) => write);
-        return current.filter((item) => item !== scope && !writesDependingOnScope.includes(item));
-      }
-      const readScope = READ_SCOPE_FOR_WRITE[scope];
-      return [...new Set([...current, scope, ...(readScope ? [readScope] : [])])];
-    });
-  }
-
   const capabilityPreview = useMemo(
     () => selectedProject
       ? buildAgentPrompt({
           workspaceSlug: slug,
           target: { scopeLevel: "project", project: { slug: selectedProject.slug, id: selectedProject.id } },
           scopes: scopes as ApiScope[],
-          keyRef: { kind: "plaintext", key: "<API_KEY_RECIÉN_CREADA>" },
+          keyRef: { kind: "placeholder", label: "<API_KEY_RECIÉN_CREADA>" },
           mcpUrl: MCP_URL,
         })
       : null,
@@ -1103,18 +1089,8 @@ function AddTeamModal({
             <Field label="Alcance" hint="Los agentes recién creados empiezan ligados a su proyecto.">
               <Badge tone="brand" mono>project</Badge>
             </Field>
-            <Field label="Permisos de la primera API key" hint="Elige al menos un permiso de lectura; escritura añade su lectura correspondiente.">
-              <div className="flex flex-wrap gap-2">
-                {API_SCOPES.map((scope) => (
-                  <ToggleChip
-                    key={scope}
-                    checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope as ApiScope)}
-                  >
-                    {scope}
-                  </ToggleChip>
-                ))}
-              </div>
+            <Field label="Permisos de la primera API key" hint="Elige un preset o personaliza por dominio. Escritura añade su lectura correspondiente.">
+              <ScopePicker value={scopes as ApiScope[]} onChange={(next) => setScopes(next)} />
             </Field>
             {capabilityPreview ? <CapabilityReceipt prompt={capabilityPreview} /> : null}
             {!hasReadScope ? <ErrorText>Elige al menos un permiso de lectura: sin ninguno el agente no puede descubrir nada.</ErrorText> : null}
