@@ -60,17 +60,20 @@ export function ScopePicker({ value, onChange }: { value: ApiScope[]; onChange: 
         <PresetButton active={preset === "custom"} onClick={() => selectPreset("custom")} label="Personalizado" description="Elige permisos por dominio." />
       </div>
       {preset === "custom" ? (
-        <div className="overflow-hidden rounded-md border border-line-200">
-          <div className="grid grid-cols-[minmax(5.5rem,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-line-100 bg-surface-50 px-3 py-2 text-caption font-mono uppercase text-ink-500">
-            <span>Dominio</span><span>Lectura</span><span>Escritura</span>
-          </div>
-          {GROUPS.map(({ label, read, write }) => (
-            <div key={label} className="grid grid-cols-[minmax(5.5rem,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-b border-line-100 px-3 py-2 last:border-b-0">
-              <span className="text-body-sm font-medium text-ink-700">{label}</span>
-              <div>{read ? <ToggleChip checked={value.includes(read)} onChange={() => toggle(read)}>{read}</ToggleChip> : <span className="text-body-sm text-ink-400">—</span>}</div>
-              <div>{write ? <ToggleChip checked={value.includes(write)} onChange={() => toggle(write)}>{write}</ToggleChip> : <span className="text-body-sm text-ink-400">—</span>}</div>
+        <div className="overflow-x-auto rounded-md border border-line-200">
+          {/* min-w evita que los chips de scope se solapen en pantallas angostas: la tabla prefiere scroll horizontal */}
+          <div className="min-w-[24.5rem]">
+            <div className="grid grid-cols-[minmax(5.5rem,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-line-100 bg-surface-50 px-3 py-2 text-caption font-mono uppercase text-ink-500">
+              <span>Dominio</span><span>Lectura</span><span>Escritura</span>
             </div>
-          ))}
+            {GROUPS.map(({ label, read, write }) => (
+              <div key={label} className="grid grid-cols-[minmax(5.5rem,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-b border-line-100 px-3 py-2 last:border-b-0">
+                <span className="text-body-sm font-medium text-ink-700">{label}</span>
+                <div>{read ? <ToggleChip checked={value.includes(read)} onChange={() => toggle(read)}>{read}</ToggleChip> : <span className="text-body-sm text-ink-400">—</span>}</div>
+                <div>{write ? <ToggleChip checked={value.includes(write)} onChange={() => toggle(write)}>{write}</ToggleChip> : <span className="text-body-sm text-ink-400">—</span>}</div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
@@ -79,7 +82,7 @@ export function ScopePicker({ value, onChange }: { value: ApiScope[]; onChange: 
 
 function PresetButton({ active, label, description, recommended, onClick }: { active: boolean; label: string; description: string; recommended?: boolean; onClick: () => void }) {
   return (
-    <Button type="button" role="radio" variant={active ? "primary" : "secondary"} className="h-auto min-h-20 justify-start px-3 py-3 text-left" onClick={onClick} aria-checked={active}>
+    <Button type="button" role="radio" variant={active ? "primary" : "secondary"} wrap className="h-auto min-h-20 w-full justify-start px-3 py-3 text-left" onClick={onClick} aria-checked={active}>
       <span>
         <span className="block text-body-sm font-semibold">{label}{recommended ? " · recomendado" : ""}</span>
         <span className="mt-1 block text-caption font-normal opacity-80">{description}</span>

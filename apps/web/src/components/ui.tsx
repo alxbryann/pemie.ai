@@ -35,15 +35,20 @@ const BUTTON_SIZES = {
 export function Button({
   variant = "primary",
   size = "md",
+  wrap = false,
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   size?: keyof typeof BUTTON_SIZES;
+  /** Para contenido multilínea (ej. tarjetas de opción con descripción): permite romper línea en vez de desbordar sobre el elemento vecino. */
+  wrap?: boolean;
 }) {
   return (
     <button
-      className={`inline-flex items-center justify-center whitespace-nowrap font-semibold leading-none transition-[background-color,border-color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:shadow-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`}
+      className={`inline-flex items-center justify-center font-semibold transition-[background-color,border-color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:shadow-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${
+        wrap ? "whitespace-normal break-words leading-snug" : "whitespace-nowrap leading-none"
+      } ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`}
       {...props}
     />
   );
