@@ -1,11 +1,5 @@
-import type { AgentPrompt, ToolAccess } from "@pemie/shared";
+import { describeToolAccess, type AgentPrompt } from "@pemie/shared";
 import { Collapsible, CodeBlock, Notice } from "./ui.js";
-
-function accessLabel(access: ToolAccess): string {
-  if (access.kind === "scope") return access.scope;
-  if (access.kind === "anyOf") return `uno de: ${access.scopes.join(", ")}`;
-  return "sin permiso adicional";
-}
 
 export function CapabilityReceipt({ prompt }: { prompt: AgentPrompt }) {
   return (
@@ -17,7 +11,7 @@ export function CapabilityReceipt({ prompt }: { prompt: AgentPrompt }) {
       {prompt.excluded.length ? (
         <Collapsible title="Ver las herramientas que quedan fuera" className="mt-3 bg-surface-0">
           <ul className="space-y-1.5 font-mono text-caption text-ink-600">
-            {prompt.excluded.map(({ tool, needs }) => <li key={tool}>{tool} — habilítala con {accessLabel(needs)}</li>)}
+            {prompt.excluded.map(({ tool, needs }) => <li key={tool}>{tool} — habilítala con {describeToolAccess(needs)}</li>)}
           </ul>
         </Collapsible>
       ) : null}

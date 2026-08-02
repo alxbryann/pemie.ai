@@ -28,10 +28,18 @@ export type ToolAccess =
   | { kind: "scope"; scope: ApiScope }
   | { kind: "anyOf"; scopes: readonly ApiScope[] };
 
+export type ToolGroup =
+  | "Descubrimiento"
+  | "Contexto y commits"
+  | "Objetivo e informes"
+  | "Notas"
+  | "Historias de Usuario"
+  | "Kanban";
+
 export interface McpToolMeta {
   access: ToolAccess;
   summary: string;
-  group: string;
+  group: ToolGroup;
 }
 
 /**
@@ -75,6 +83,13 @@ export function isToolAvailable(access: ToolAccess, scopes: readonly ApiScope[])
   }
 }
 
+/** Texto humano consistente para una denegación y la vista previa de capacidades. */
+export function describeToolAccess(access: ToolAccess): string {
+  if (access.kind === "scope") return access.scope;
+  if (access.kind === "anyOf") return `uno de: ${access.scopes.join(", ")}`;
+  return "sin permiso adicional";
+}
+
 export type KeyRef = { kind: "plaintext"; key: string } | { kind: "prefix"; prefix: string };
 
 export type PromptTarget =
@@ -101,7 +116,7 @@ export function buildAgentPrompt(input: {
     needs: MCP_TOOLS[tool].access,
   }));
   const key = input.keyRef.kind === "plaintext" ? input.keyRef.key : `${input.keyRef.prefix}…`;
-  const byGroup = new Map<string, McpToolName[]>();
+  const byGroup = new Map<ToolGroup, McpToolName[]>();
   for (const tool of included) {
     const group = MCP_TOOLS[tool].group;
     byGroup.set(group, [...(byGroup.get(group) ?? []), tool]);

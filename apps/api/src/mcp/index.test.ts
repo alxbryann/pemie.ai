@@ -35,7 +35,10 @@ test("prompt y catálogo MCP comparten exactamente el filtro de scopes", () => {
 test("una key solo reports no recibe ni puede invocar search", async () => {
   const reportsOnly = key(["reports:read"]);
   assert.equal(listMcpToolDefs(reportsOnly).some((tool) => tool.name === "search"), false);
-  await assert.rejects(() => invokeMcpTool(reportsOnly, "search", { query: "hola" }), /permisos requeridos/);
+  await assert.rejects(
+    () => invokeMcpTool(reportsOnly, "search", { query: "hola" }),
+    /uno de: stories:read, commits:read, notes:read, board:read/
+  );
 });
 
 test("el renderer describe de forma distinta los dos alcances", () => {

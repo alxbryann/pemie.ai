@@ -9,6 +9,7 @@ import type { ApiKey } from "@prisma/client";
 import {
   MCP_TOOLS,
   SEARCHABLE_TYPES,
+  describeToolAccess,
   isToolAvailable,
   type ApiScope,
   type McpToolName,
@@ -565,7 +566,7 @@ export async function invokeMcpTool(
   if (!tool) throw badRequest(`Tool desconocida: ${name}`, "unknown_tool");
   agents.assertKeyUsable(key);
   if (!isToolAvailable(MCP_TOOLS[tool.name].access, key.scopes as ApiScope[]))
-    throw forbidden("La API key no tiene los permisos requeridos para esta tool");
+    throw forbidden(`La API key no tiene el permiso requerido: ${describeToolAccess(MCP_TOOLS[tool.name].access)}`);
   const ctx: McpContext = { key, projectId: key.projectId };
   const result = await tool.handler(ctx, args);
   await auditToolCall(ctx, name, args, typeof args.projectId === "string" ? args.projectId : key.projectId);
@@ -705,7 +706,7 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
       const tool = TOOL_BY_NAME.get(name as McpToolName);
       if (!tool) return rpcError(id, -32602, `Tool desconocida: ${name}`);
       if (!isToolAvailable(MCP_TOOLS[tool.name].access, ctx.key.scopes as ApiScope[]))
-        return rpcError(id, -32000, "La API key no tiene los permisos requeridos para esta tool");
+        return rpcError(id, -32000, `La API key no tiene el permiso requerido: ${describeToolAccess(MCP_TOOLS[tool.name].access)}`);
       const args = (req.params?.arguments as Record<string, unknown>) ?? {};
       try {
         const result = await tool.handler(ctx, args);
