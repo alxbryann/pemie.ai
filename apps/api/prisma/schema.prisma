@@ -126,6 +126,7 @@ model Project {
   slug         String
   description  String?
   key          String   @default("PRJ") // prefijo para keys de HU: PRJ-123
+  storySeq     Int      @default(0) // última key de HU emitida; nunca decrece (PEM-20)
   domainConfig Json? // DomainConfig (packages/shared). null => DEFAULT_DOMAIN_CONFIG
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

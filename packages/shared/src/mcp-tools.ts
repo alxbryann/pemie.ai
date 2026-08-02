@@ -7,7 +7,7 @@ export const MCP_TOOL_NAMES = [
   "list_user_stories", "create_user_story", "update_user_story", "assign_user_story",
   "list_contributors", "list_board", "create_card", "move_card", "link_story_to_card",
   "get_story_commit_progress", "search", "create_note", "get_user_story", "delete_user_story",
-  "update_card", "list_card_activities",
+  "update_card", "list_card_activities", "delete_card",
 ] as const;
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
 
@@ -70,9 +70,10 @@ export const MCP_TOOLS: Record<McpToolName, McpToolMeta> = {
   search: { access: { kind: "anyOf", scopes: Object.values(SCOPE_BY_TYPE) }, summary: "busca HUs, commits, notas y tarjetas según tus permisos.", group: "Descubrimiento" },
   create_note: { access: { kind: "scope", scope: "notes:write" }, summary: "deja una nota o pregunta en el proyecto.", group: "Notas" },
   get_user_story: { access: { kind: "scope", scope: "stories:read" }, summary: "detalle de una sola HU por id.", group: "Historias de Usuario" },
-  delete_user_story: { access: { kind: "scope", scope: "stories:write" }, summary: "elimina una HU y conserva su tarjeta desvinculada.", group: "Historias de Usuario" },
+  delete_user_story: { access: { kind: "scope", scope: "stories:write" }, summary: "elimina una HU y, salvo que se pida conservarla, su tarjeta del Kanban.", group: "Historias de Usuario" },
   update_card: { access: { kind: "scope", scope: "board:write" }, summary: "actualiza título, descripción, tipo, asignado o HU de una tarjeta.", group: "Kanban" },
   list_card_activities: { access: { kind: "scope", scope: "board:read" }, summary: "actividad de una tarjeta con el nombre del actor.", group: "Kanban" },
+  delete_card: { access: { kind: "scope", scope: "board:write" }, summary: "elimina una tarjeta del tablero sin borrar su HU.", group: "Kanban" },
 };
 
 export function isToolAvailable(access: ToolAccess, scopes: readonly ApiScope[]): boolean {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
+  analyticsFailureReason,
   ApiError,
   type Card as CardData,
   type CardActivity,
@@ -8,6 +9,7 @@ import {
   type Contributor,
   type UserStory,
 } from "../../lib/api.js";
+import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
   Button,
@@ -75,6 +77,7 @@ export default function CardDetailModal({
   proj,
   onClose,
   onChanged,
+  onDeleted,
 }: {
   card: CardData;
   columns: Column[];
@@ -82,6 +85,7 @@ export default function CardDetailModal({
   proj: string;
   onClose: () => void;
   onChanged: (card: CardData) => void;
+  onDeleted: (cardId: string) => void;
 }) {
   const [title, setTitle] = useState(card.title);
   const [type, setType] = useState(card.type);
@@ -95,6 +99,10 @@ export default function CardDetailModal({
   const [metaLoading, setMetaLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Confirmación inline en vez de un segundo Modal encima: el mismo gesto que
+  // ya usan las filas de Equipo para borrar.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadMeta = useCallback(async () => {
     setMetaLoading(true);
@@ -155,6 +163,21 @@ export default function CardDetailModal({
       setError(e instanceof ApiError ? e.message : "No se pudo guardar la tarjeta");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function remove() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.board.removeCard(ws, proj, card.id);
+      track("board_card_deleted", { had_story: card.userStoryId !== null });
+      onDeleted(card.id);
+    } catch (e) {
+      track("board_card_deleted_failed", { reason: analyticsFailureReason(e) });
+      setError(e instanceof ApiError ? e.message : "No se pudo eliminar la tarjeta");
+      setDeleting(false);
+      setConfirmingDelete(false);
     }
   }
 
@@ -263,14 +286,50 @@ export default function CardDetailModal({
           </>
         )}
 
-        <div className="flex justify-end gap-2 border-t border-line-100 pt-4">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button onClick={save} disabled={saving || metaLoading}>
-            {saving ? "Guardando…" : "Guardar"}
-          </Button>
-        </div>
+        {confirmingDelete ? (
+          <div className="space-y-3 border-t border-line-100 pt-4">
+            <p className="text-body-sm text-ink-700">
+              ¿Eliminar <span className="font-medium text-ink-900">{card.title}</span> del
+              tablero? Se pierde también su actividad y no se puede deshacer.
+            </p>
+            <p className="text-body-sm text-ink-500">
+              {card.userStoryId
+                ? "Su Historia de Usuario NO se elimina: sigue en el listado, sin tarjeta."
+                : "Esta tarjeta no tiene ninguna Historia de Usuario vinculada."}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancelar
+              </Button>
+              <Button variant="danger" onClick={remove} disabled={deleting}>
+                {deleting ? "Eliminando…" : "Eliminar tarjeta"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line-100 pt-4">
+            <Button
+              variant="danger"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={saving}
+              aria-label={`Eliminar tarjeta ${card.title}`}
+            >
+              Eliminar
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={onClose} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button onClick={save} disabled={saving || metaLoading}>
+                {saving ? "Guardando…" : "Guardar"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

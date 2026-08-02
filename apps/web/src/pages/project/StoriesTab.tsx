@@ -6,6 +6,7 @@ import {
   type BadgeTone,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   Skeleton,
   SkeletonCard,
@@ -50,6 +51,9 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
   const [pendingDelete, setPendingDelete] = useState<UserStory | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Marcado por defecto: la tarjeta nace con la HU, así que lo esperable es que
+  // se vaya con ella. Quien quiera conservarla lo desmarca (PEM-19).
+  const [deleteCard, setDeleteCard] = useState(true);
 
   async function load() {
     setError(null);
@@ -107,9 +111,10 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
     setDeleting(true);
     setDeleteError(null);
     try {
-      await api.stories.remove(ws, proj, pendingDelete.id);
-      track("story_deleted");
+      await api.stories.remove(ws, proj, pendingDelete.id, !deleteCard);
+      track("story_deleted", { card_deleted: deleteCard });
       setPendingDelete(null);
+      setDeleteCard(true);
       await load();
     } catch (e) {
       track("story_delete_failed", { reason: analyticsFailureReason(e) });
@@ -266,6 +271,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
             if (!deleting) {
               setPendingDelete(null);
               setDeleteError(null);
+              setDeleteCard(true);
             }
           }}
         >
@@ -279,9 +285,13 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
               — <span className="font-medium text-ink-900">{pendingDelete.title}</span>? Esta
               acción no se puede deshacer.
             </p>
+            <Checkbox checked={deleteCard} onChange={setDeleteCard}>
+              Eliminar también su tarjeta del Kanban
+            </Checkbox>
             <p className="text-body-sm text-ink-500">
-              Si esta historia tiene una tarjeta en el Kanban, la tarjeta se conserva pero
-              queda sin HU vinculada.
+              {deleteCard
+                ? "La tarjeta y su actividad se eliminan con la historia."
+                : "La tarjeta se conserva en el tablero, pero queda sin HU vinculada."}
             </p>
             <div className="flex justify-end gap-2 border-t border-line-100 pt-4">
               <Button
@@ -290,6 +300,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
                 onClick={() => {
                   setPendingDelete(null);
                   setDeleteError(null);
+                  setDeleteCard(true);
                 }}
               >
                 Cancelar

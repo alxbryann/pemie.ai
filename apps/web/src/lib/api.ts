@@ -484,8 +484,12 @@ export const api = {
       post<{ userStory: UserStory }>(`${pp(w, p)}/user-stories`, input),
     update: (w: string, p: string, id: string, patchBody: Partial<UserStory>) =>
       patch<{ userStory: UserStory }>(`${pp(w, p)}/user-stories/${id}`, patchBody),
-    remove: (w: string, p: string, id: string) =>
-      del<{ ok: true }>(`${pp(w, p)}/user-stories/${id}`),
+    // `keepCard` conserva la tarjeta del Kanban desvinculada; por defecto se
+    // borra junto con la HU para no dejar tarjetas huérfanas (PEM-19).
+    remove: (w: string, p: string, id: string, keepCard = false) =>
+      del<{ ok: true; cardDeleted: boolean }>(
+        `${pp(w, p)}/user-stories/${id}${keepCard ? "?keepCard=1" : ""}`
+      ),
   },
   contributors: {
     list: (w: string, p: string) => get<{ contributors: Contributor[] }>(`${pp(w, p)}/contributors`),
@@ -578,6 +582,8 @@ export const api = {
         labels?: unknown;
       }
     ) => patch<{ card: Card }>(`${pp(w, p)}/board/cards/${id}`, patchBody),
+    removeCard: (w: string, p: string, id: string) =>
+      del<{ ok: true }>(`${pp(w, p)}/board/cards/${id}`),
     activities: (w: string, p: string, id: string) =>
       get<{ activities: CardActivity[] }>(`${pp(w, p)}/board/cards/${id}/activities`),
   },

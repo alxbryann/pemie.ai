@@ -486,13 +486,19 @@ const TOOLS: McpTool[] = [
   {
     name: "delete_user_story",
     description:
-      "Elimina una HU. Su tarjeta del Kanban se conserva desvinculada, con su actividad intacta.",
-    inputSchema: withProjectId({ storyId: { type: "string" } }, ["storyId"]),
+      "Elimina una HU y su tarjeta del Kanban. Con keepCard=true la tarjeta se conserva desvinculada, con su actividad intacta.",
+    inputSchema: withProjectId(
+      { storyId: { type: "string" }, keepCard: { type: "boolean" } },
+      ["storyId"]
+    ),
     handler: async (ctx, args) => {
       const projectId = await requireProject(ctx, args, "stories:write");
       const story = await stories.getStoryById(String(args.storyId));
       if (!story || story.projectId !== projectId) throw forbidden("La HU no pertenece a este proyecto");
-      return stories.opDeleteStory(story);
+      // Del otro lado del MCP no hay nadie mirando un diálogo de confirmación:
+      // el default borra la tarjeta para que el agente no deje huérfanas sin
+      // enterarse. Quien quiera conservarla lo pide explícitamente.
+      return stories.opDeleteStory(story, { deleteCard: args.keepCard !== true });
     },
   },
   {
@@ -532,6 +538,19 @@ const TOOLS: McpTool[] = [
         actorType: "agent",
         actorId: ctx.key.agentId ?? ctx.key.id,
       });
+    },
+  },
+  {
+    name: "delete_card",
+    description:
+      "Elimina una tarjeta del tablero junto con su actividad. La HU vinculada no se borra: para eso está delete_user_story.",
+    inputSchema: withProjectId({ cardId: { type: "string" } }, ["cardId"]),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "board:write");
+      const card = await board.getCardWithProject(String(args.cardId));
+      if (!card || card.board.projectId !== projectId)
+        throw forbidden("La tarjeta no pertenece a este proyecto");
+      return board.opDeleteCard(card.id);
     },
   },
   {

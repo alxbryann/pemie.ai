@@ -97,15 +97,23 @@ async function validateAssignee(projectId: string, assigneeId: string) {
     throw badRequest("El asignado no pertenece al proyecto", "assignee_mismatch");
 }
 
-/** Calcula la siguiente key (PRJ-N) a partir del prefijo del proyecto. */
+/**
+ * Reserva la siguiente key (PRJ-N) consumiendo el contador del proyecto.
+ *
+ * El contador vive en `projects.storySeq` y solo crece: derivarlo del máximo de
+ * las HUs vivas devolvía la key al pool al borrar la HU más alta, y una key
+ * reutilizada le roba a la HU nueva los commits de la anterior —
+ * `opGetStoryCommitProgress` busca por el texto de la key, no por id.
+ * El `increment` de Postgres es atómico, así que dos creaciones concurrentes
+ * reservan números distintos sin bloquear.
+ */
 async function nextStoryKey(projectId: string, prefix: string): Promise<string> {
-  const stories = await prisma.userStory.findMany({ where: { projectId }, select: { key: true } });
-  let max = 0;
-  for (const s of stories) {
-    const m = s.key.match(/-(\d+)$/);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `${prefix}-${max + 1}`;
+  const { storySeq } = await prisma.project.update({
+    where: { id: projectId },
+    data: { storySeq: { increment: 1 } },
+    select: { storySeq: true },
+  });
+  return `${prefix}-${storySeq}`;
 }
 
 /** Crea una HU (member+). */
@@ -118,8 +126,9 @@ export async function createStory(userId: string, projectId: string, input: Crea
  * Operación (ya autorizada): crea la HU con una key incremental por proyecto
  * y su tarjeta Kanban ya ligada (columna inicial del tablero), para que nunca
  * quede una HU huérfana sin tarjeta ni haga falta el paso manual de
- * create_card/link_story_to_card. Reintenta la HU si dos creaciones
- * concurrentes eligen la misma key (unique).
+ * create_card/link_story_to_card. El reintento cubre el caso residual de una
+ * key ya ocupada que el contador del proyecto no conocía (datos anteriores a
+ * PEM-20): cada vuelta reserva un número nuevo, nunca el mismo.
  */
 export async function opCreateStory(
   projectId: string,
@@ -266,22 +275,44 @@ export async function opUpdateStory(
   return prisma.userStory.update({ where: { id: story.id }, data });
 }
 
-/**
- * Elimina una HU (member+). Si tiene una Card vinculada en el Kanban, la FK
- * `cards.userStoryId` es `ON DELETE SET NULL` (migration.sql) — la DB
- * desvincula la tarjeta sola, no hace falta borrarla ni tocarla aquí.
- */
-export async function deleteStory(userId: string, storyId: string) {
+/** Elimina una HU (member+). */
+export async function deleteStory(userId: string, storyId: string, options: DeleteStoryOptions = {}) {
   const story = await getStoryById(storyId);
   if (!story) throw notFound("HU no encontrada");
   await projectWithAccess(userId, story.projectId, "member");
-  return opDeleteStory(story);
+  return opDeleteStory(story, options);
 }
 
-/** Operación (ya autorizada): elimina la HU ya cargada. */
-export async function opDeleteStory(story: { id: string }) {
+export interface DeleteStoryOptions {
+  /** Borrar también la tarjeta vinculada. Por defecto sí (PEM-19). */
+  deleteCard?: boolean;
+}
+
+/**
+ * Operación (ya autorizada): elimina la HU ya cargada y, salvo que se pida lo
+ * contrario, su tarjeta del Kanban.
+ *
+ * La FK `cards.userStoryId` es `ON DELETE SET NULL`, así que sin este paso la
+ * tarjeta sobrevive desvinculada. Eso tenía sentido cuando la tarjeta se creaba
+ * a mano y borrarla habría tirado trabajo humano; desde PEM-13 nace sola con la
+ * HU, de modo que conservarla ya no protege nada: deja una tarjeta huérfana con
+ * una key en el título que el proyecto puede volver a emitir.
+ *
+ * `deleteCard: false` conserva el comportamiento anterior para quien quiera
+ * quedarse con la tarjeta y su actividad.
+ */
+export async function opDeleteStory(
+  story: { id: string },
+  { deleteCard = true }: DeleteStoryOptions = {}
+) {
+  const card = deleteCard ? await board.findCardByStory(story.id) : null;
   try {
-    await prisma.userStory.delete({ where: { id: story.id } });
+    // En una transacción: un borrado a medias dejaría justo la tarjeta huérfana
+    // que este cambio viene a evitar.
+    await prisma.$transaction([
+      ...(card ? [prisma.card.delete({ where: { id: card.id } })] : []),
+      prisma.userStory.delete({ where: { id: story.id } }),
+    ]);
   } catch (err) {
     // Carrera: otro borrado concurrente ya se la llevó entre el findUnique y
     // el delete. Devolver 404 (no encontrada), no un 500 genérico.
@@ -289,7 +320,7 @@ export async function opDeleteStory(story: { id: string }) {
       throw notFound("HU no encontrada");
     throw err;
   }
-  return { ok: true };
+  return { ok: true, cardDeleted: card !== null };
 }
 
 /**
