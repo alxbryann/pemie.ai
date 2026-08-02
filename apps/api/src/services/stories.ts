@@ -305,14 +305,19 @@ export async function opDeleteStory(
   story: { id: string },
   { deleteCard = true }: DeleteStoryOptions = {}
 ) {
-  const card = deleteCard ? await board.findCardByStory(story.id) : null;
   try {
     // En una transacción: un borrado a medias dejaría justo la tarjeta huérfana
-    // que este cambio viene a evitar.
-    await prisma.$transaction([
-      ...(card ? [prisma.card.delete({ where: { id: card.id } })] : []),
-      prisma.userStory.delete({ where: { id: story.id } }),
-    ]);
+    // que este cambio viene a evitar. `deleteMany` en vez de `delete` porque no
+    // lanza P2025 con cero filas: si alguien se llevó la tarjeta con delete_card
+    // entre medio, la HU se borra igual y el 404 de abajo sigue significando lo
+    // que dice — que la HU no está, no que faltaba su tarjeta.
+    return await prisma.$transaction(async (tx) => {
+      const removed = deleteCard
+        ? await tx.card.deleteMany({ where: { userStoryId: story.id } })
+        : { count: 0 };
+      await tx.userStory.delete({ where: { id: story.id } });
+      return { ok: true, cardDeleted: removed.count > 0 };
+    });
   } catch (err) {
     // Carrera: otro borrado concurrente ya se la llevó entre el findUnique y
     // el delete. Devolver 404 (no encontrada), no un 500 genérico.
@@ -320,7 +325,6 @@ export async function opDeleteStory(
       throw notFound("HU no encontrada");
     throw err;
   }
-  return { ok: true, cardDeleted: card !== null };
 }
 
 /**

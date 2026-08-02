@@ -392,11 +392,6 @@ export async function opDeleteCard(cardId: string) {
   return { ok: true };
 }
 
-/** Devuelve la tarjeta vinculada a una HU, si la tiene. */
-export function findCardByStory(storyId: string) {
-  return prisma.card.findUnique({ where: { userStoryId: storyId } });
-}
-
 /** Actividad reciente de una tarjeta (viewer+). */
 export async function listCardActivities(userId: string, cardId: string, limit = 50) {
   const card = await cardWithProject(cardId);
