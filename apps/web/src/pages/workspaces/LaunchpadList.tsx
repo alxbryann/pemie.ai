@@ -2,6 +2,7 @@ import { useRef } from "react";
 import type { WorkspaceSummary } from "../../lib/api.js";
 import { Button, ErrorText, Eyebrow, Field, Input, Kbd } from "../../components/ui.js";
 import { greetingFor, stampFor } from "./greeting.js";
+import { MouseGlow } from "./MouseGlow.js";
 import { WorkspaceRow } from "./WorkspaceRow.js";
 import { useWorkspaceKeys } from "./useWorkspaceKeys.js";
 
@@ -34,7 +35,7 @@ export function LaunchpadList({
 
   return (
     <div className="relative mx-auto flex max-w-focus flex-col">
-      <div className="launchpad-glow" />
+      <MouseGlow />
       <div className="relative mb-11 flex flex-col items-center gap-2.5 text-center">
         <Eyebrow>{stampFor(now)}</Eyebrow>
         <h1 className="text-h1 text-ink-900">{greetingFor(now, userName)}</h1>
