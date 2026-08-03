@@ -60,4 +60,17 @@
     text-transform: uppercase;
     color: var(--ink-500);
   }
+
+  /* Elipse difusa detrás del saludo del launchpad de workspaces. */
+  .launchpad-glow {
+    position: absolute;
+    top: -220px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 900px;
+    height: 440px;
+    max-width: 200vw;
+    background: radial-gradient(ellipse at center, var(--accent-tint), transparent 65%);
+    pointer-events: none;
+  }
 }

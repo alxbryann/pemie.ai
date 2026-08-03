@@ -59,9 +59,11 @@ export function Button({
 const CONTROL =
   "rounded-sm border border-line-200 bg-surface-0 px-3.5 py-2.5 text-body text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-blue-600 focus:shadow-focus disabled:bg-surface-50 disabled:text-ink-400";
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${CONTROL} w-full min-w-0 ${className}`} {...props} />;
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className = "", ...props }, ref) {
+    return <input ref={ref} className={`${CONTROL} w-full min-w-0 ${className}`} {...props} />;
+  }
+);
 
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={`${CONTROL} w-full min-w-0 leading-snug ${className}`} {...props} />;
@@ -298,6 +300,38 @@ export function Badge({
       } ${t.chip} ${mono ? "font-mono text-mono-label font-medium uppercase" : "text-caption font-semibold"}`}
     >
       {dot ? <span className={`h-1.5 w-1.5 rounded-pill ${t.dot}`} /> : null}
+      {children}
+    </span>
+  );
+}
+
+const AVATAR_SIZES = {
+  sm: "h-8 w-8 rounded-md text-body-sm",
+  md: "h-[52px] w-[52px] rounded-lg text-h4",
+};
+
+/** Inicial sobre tinte de marca, mismo tratamiento que el avatar de `AccountMenu` (sin variar por entidad). */
+export function Avatar({
+  label,
+  size = "md",
+}: {
+  label: string;
+  size?: keyof typeof AVATAR_SIZES;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex flex-shrink-0 items-center justify-center bg-blue-100 font-bold text-blue-700 ${AVATAR_SIZES[size]}`}
+    >
+      {label.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+/** Chip mono de atajo de teclado (`⌘1`, `⌘N`, `/`). */
+export function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-sm border border-line-200 bg-surface-50 px-2 py-1 font-mono text-caption text-ink-400">
       {children}
     </span>
   );
