@@ -15,6 +15,7 @@
   --surface-0:   #ffffff; /* page / card */
   --surface-50:  #f7f9fc; /* subtle raised / section */
   --surface-100: #eef2f7; /* sunken / hover fill */
+  --surface-header: rgba(255,255,255,0.82); /* header sticky con blur, único lugar con transparencia */
 
   /* ---- Lines ---- */
   --line-200: #e3e5ea; /* default border */
@@ -96,6 +97,7 @@
   --surface-0:   #0b1220; /* page / card */
   --surface-50:  #10192b; /* subtle raised / section */
   --surface-100: #17223a; /* sunken / hover fill */
+  --surface-header: rgba(11,18,32,0.82); /* header sticky con blur, único lugar con transparencia */
 
   /* ---- Lines ---- */
   --line-200: #29334c; /* default border */

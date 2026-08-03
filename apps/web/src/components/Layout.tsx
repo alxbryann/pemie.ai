@@ -3,16 +3,10 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../lib/auth.js";
-import { useTheme, type ThemePreference } from "../lib/theme.js";
-import { LogoMark, Notice, ToggleChip, Wordmark } from "./ui.js";
+import { useTheme } from "../lib/theme.js";
+import { LogoMark, MoonIcon, Notice, SunIcon, Wordmark } from "./ui.js";
 
 const ANALYTICS_NOTICE_DISMISSED_KEY = "pemie_analytics_notice_dismissed";
-
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "light", label: "Claro" },
-  { value: "dark", label: "Oscuro" },
-  { value: "system", label: "Sistema" },
-];
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -20,14 +14,15 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-surface-50">
       {/* Único lugar del sistema donde se usa transparencia + blur. */}
-      <header className="sticky top-0 z-50 border-b border-line-200 bg-white/[0.82] backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-line-200 bg-[var(--surface-header)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-container items-center gap-3 px-4 py-3.5 sm:px-8">
           <Link to="/app" className="flex items-center gap-2.5">
             <LogoMark size={26} />
             <Wordmark />
           </Link>
           {user && (
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeToggle />
               <AccountMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} />
             </div>
           )}
@@ -36,6 +31,23 @@ export function Layout({ children }: { children: ReactNode }) {
       {user && <AnalyticsNotice />}
       <main className="mx-auto w-full max-w-container flex-1 px-4 py-12 sm:px-8">{children}</main>
     </div>
+  );
+}
+
+/** Botón de ícono visible en el header: alterna claro/oscuro directo, sin submenú. */
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      className="grid h-8 w-8 place-items-center rounded-pill text-ink-600 transition-colors hover:bg-surface-100 hover:text-ink-800 focus-visible:outline-none focus-visible:shadow-focus"
+    >
+      {isDark ? <SunIcon /> : <MoonIcon />}
+    </button>
   );
 }
 
@@ -76,7 +88,6 @@ function AccountMenu({
 }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
-  const { preference, setPreference } = useTheme();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -126,40 +137,24 @@ function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+8px)] w-64 overflow-hidden rounded-md border border-line-200 bg-surface-0 py-1.5 shadow-md"
+          className="absolute right-0 top-[calc(100%+8px)] w-44 overflow-hidden rounded-md border border-line-200 bg-surface-0 py-1.5 shadow-md"
         >
-          <div className="px-3.5 py-2">
-            <span className="eyebrow mb-1.5 block">Tema</span>
-            <div className="flex flex-wrap gap-1.5">
-              {THEME_OPTIONS.map((option) => (
-                <ToggleChip
-                  key={option.value}
-                  checked={preference === option.value}
-                  onChange={() => setPreference(option.value)}
-                >
-                  {option.label}
-                </ToggleChip>
-              ))}
-            </div>
-          </div>
-          <div className="border-t border-line-100 pt-1.5">
-            <Link
-              role="menuitem"
-              to="/settings"
-              onClick={() => setOpen(false)}
-              className="block px-3.5 py-2 text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
-            >
-              Ajustes
-            </Link>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={handleLogout}
-              className="block w-full px-3.5 py-2 text-left text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
-            >
-              Salir
-            </button>
-          </div>
+          <Link
+            role="menuitem"
+            to="/settings"
+            onClick={() => setOpen(false)}
+            className="block px-3.5 py-2 text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
+          >
+            Ajustes
+          </Link>
+          <button
+            role="menuitem"
+            type="button"
+            onClick={handleLogout}
+            className="block w-full px-3.5 py-2 text-left text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
+          >
+            Salir
+          </button>
         </div>
       )}
     </div>

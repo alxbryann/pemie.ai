@@ -766,6 +766,45 @@ export function TrashIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function SunIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="8" cy="8" r="3.25" />
+      <path d="M8 1v1.5M8 13.5V15M15 8h-1.5M2.5 8H1M12.72 3.28l-1.06 1.06M4.34 11.66l-1.06 1.06M12.72 12.72l-1.06-1.06M4.34 4.34 3.28 3.28" />
+    </svg>
+  );
+}
+
+export function MoonIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M13.5 9.35A5.75 5.75 0 1 1 6.65 2.5a4.6 4.6 0 0 0 6.85 6.85Z" />
+    </svg>
+  );
+}
+
 export function Spinner() {
   return (
     <div className="grid min-h-[40vh] place-items-center">
