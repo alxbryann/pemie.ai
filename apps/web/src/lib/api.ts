@@ -213,6 +213,15 @@ export interface Stats {
   byDomain: { key: string; label: string; emoji: string | null; primary: boolean; count: number }[];
   byContributor: { contributor: Contributor | null; count: number }[];
 }
+/** Ranking de HUs cerradas por actor (persona o agente): quién movió la tarjeta a "Hecho". */
+export interface LeaderboardEntry {
+  actorType: string;
+  actorId: string | null;
+  actorName: string;
+  storiesClosed: number;
+  pointsDelivered: number;
+  avgDaysToClose: number | null;
+}
 
 // ─── F3: objetivo / informes / notas ─────────────────────────────────
 export interface Objective {
@@ -446,6 +455,10 @@ export const api = {
   },
   stats: {
     get: (w: string, p: string) => get<{ stats: Stats }>(`${pp(w, p)}/stats`),
+  },
+
+  leaderboard: {
+    get: (w: string, p: string) => get<{ leaderboard: LeaderboardEntry[] }>(`${pp(w, p)}/leaderboard`),
   },
 
   // ─── F3: objetivo / informes / notas ───────────────────────────────

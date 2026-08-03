@@ -24,6 +24,7 @@ import * as reports from "../services/reports.js";
 import * as stories from "../services/stories.js";
 import * as board from "../services/board.js";
 import * as search from "../services/search.js";
+import * as leaderboard from "../services/leaderboard.js";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "pemie.ai", version: "0.1.0" };
@@ -114,6 +115,15 @@ const TOOLS: McpTool[] = [
         reports.opListReports(projectId, { limit: 1 }),
       ]);
       return { projectId, objective, stats: projectStats, latestReport: latest[0] ?? null };
+    },
+  },
+  {
+    name: "get_project_leaderboard",
+    description: "Ranking de HUs cerradas por actor (persona o agente) en el proyecto.",
+    inputSchema: withProjectId(),
+    handler: async (ctx, args) => {
+      const projectId = await requireProject(ctx, args, "board:read");
+      return { projectId, leaderboard: await leaderboard.opProjectLeaderboard(projectId) };
     },
   },
   {

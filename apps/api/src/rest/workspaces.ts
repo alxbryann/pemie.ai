@@ -10,6 +10,7 @@ import * as reports from "../services/reports.js";
 import * as agentsSvc from "../services/agents.js";
 import * as stories from "../services/stories.js";
 import * as board from "../services/board.js";
+import * as leaderboard from "../services/leaderboard.js";
 import { badRequest } from "../services/errors.js";
 import { listInstallationRepos } from "../lib/github-app.js";
 import { type AppContext, type AppEnv, requireUser } from "./http.js";
@@ -315,6 +316,12 @@ export function workspaceRoutes() {
     const user = requireUser(c);
     const project = await resolveProject(c);
     return c.json({ stats: await stats.projectStats(user.id, project.id) });
+  });
+
+  app.get("/:slug/projects/:projectSlug/leaderboard", async (c) => {
+    const user = requireUser(c);
+    const project = await resolveProject(c);
+    return c.json({ leaderboard: await leaderboard.projectLeaderboard(user.id, project.id) });
   });
 
   app.put("/:slug/projects/:projectSlug/domain-config", async (c) => {

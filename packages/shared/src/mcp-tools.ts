@@ -7,7 +7,7 @@ export const MCP_TOOL_NAMES = [
   "list_user_stories", "create_user_story", "update_user_story", "assign_user_story",
   "list_contributors", "list_board", "create_card", "move_card", "link_story_to_card",
   "get_story_commit_progress", "search", "create_note", "get_user_story", "delete_user_story",
-  "update_card", "list_card_activities", "delete_card",
+  "update_card", "list_card_activities", "delete_card", "get_project_leaderboard",
 ] as const;
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
 
@@ -74,6 +74,7 @@ export const MCP_TOOLS: Record<McpToolName, McpToolMeta> = {
   update_card: { access: { kind: "scope", scope: "board:write" }, summary: "actualiza título, descripción, tipo, asignado o HU de una tarjeta.", group: "Kanban" },
   list_card_activities: { access: { kind: "scope", scope: "board:read" }, summary: "actividad de una tarjeta con el nombre del actor.", group: "Kanban" },
   delete_card: { access: { kind: "scope", scope: "board:write" }, summary: "elimina una tarjeta del tablero sin borrar su HU.", group: "Kanban" },
+  get_project_leaderboard: { access: { kind: "scope", scope: "board:read" }, summary: "ranking de HUs cerradas por actor (persona o agente).", group: "Kanban" },
 };
 
 export function isToolAvailable(access: ToolAccess, scopes: readonly ApiScope[]): boolean {
