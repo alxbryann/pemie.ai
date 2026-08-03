@@ -96,6 +96,7 @@ export default {
       maxWidth: {
         container: "var(--container)",
         narrow: "var(--container-narrow)",
+        focus: "var(--container-focus)",
       },
       transitionTimingFunction: {
         overshoot: "cubic-bezier(.34,1.56,.64,1)",

@@ -18,6 +18,7 @@ import {
   type ApiKeyPublic,
 } from "../lib/api.js";
 import { track } from "../lib/analytics/index.js";
+import { touchWorkspace } from "./workspaces/recents.js";
 import { CapabilityReceipt, ConnectPanel } from "../components/ConnectPanel.js";
 import { ScopePicker } from "../components/ScopePicker.js";
 import {
@@ -58,6 +59,7 @@ export default function Workspace() {
     ]);
     setWs(workspace);
     setProjects(projects);
+    touchWorkspace(slug);
   }
 
   useEffect(() => {

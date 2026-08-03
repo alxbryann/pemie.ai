@@ -32,4 +32,5 @@
   /* Layout */
   --container: 1200px;
   --container-narrow: 900px;
+  --container-focus: 720px; /* columna centrada del launchpad de workspaces */
 }
