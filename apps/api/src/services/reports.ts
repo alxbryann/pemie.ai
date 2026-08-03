@@ -61,6 +61,11 @@ export async function opSetObjective(
 /** Historial de cambios del objetivo, más reciente primero. Viewer+. */
 export async function listObjectiveHistory(userId: string, projectId: string) {
   await projectWithAccess(userId, projectId);
+  return opListObjectiveHistory(projectId);
+}
+
+/** Operación (ya autorizada): historial de cambios del objetivo. */
+export function opListObjectiveHistory(projectId: string) {
   return prisma.objectiveHistory.findMany({
     where: { projectId },
     orderBy: { createdAt: "desc" },

@@ -318,11 +318,20 @@ export async function listProjects(userId: string, workspaceId: string) {
   });
 }
 
-/** Devuelve un proyecto por slug dentro de un workspace-slug (requiere membresía). */
+/**
+ * Devuelve un proyecto por slug dentro de un workspace-slug (requiere membresía).
+ *
+ * La membresía se exige con `minRole: "viewer"` (rank 0), que ninguna membresía
+ * existente puede incumplir — así que el filtro `memberships: { some: { userId } }`
+ * resuelve en una sola consulta lo que antes eran dos (workspace + requireMembership)
+ * sin cambiar los mensajes de error: sigue siendo "Workspace no encontrado" tanto si
+ * el workspace no existe como si el usuario no es miembro, igual que antes.
+ */
 export async function getProject(userId: string, workspaceSlug: string, projectSlug: string) {
-  const workspace = await prisma.workspace.findUnique({ where: { slug: workspaceSlug } });
+  const workspace = await prisma.workspace.findFirst({
+    where: { slug: workspaceSlug, memberships: { some: { userId } } },
+  });
   if (!workspace) throw notFound("Workspace no encontrado");
-  await requireMembership(userId, workspace.id);
   const project = await prisma.project.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug: projectSlug } },
   });

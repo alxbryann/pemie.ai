@@ -256,9 +256,8 @@ export function workspaceRoutes() {
     tenancy.getProject(requireUser(c).id, c.req.param("slug")!, c.req.param("projectSlug")!);
 
   app.get("/:slug/projects/:projectSlug/repos", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ repos: await ingest.listRepos(user.id, project.id) });
+    return c.json({ repos: await ingest.opListRepos(project.id) });
   });
 
   app.post("/:slug/projects/:projectSlug/repos", async (c) => {
@@ -280,7 +279,6 @@ export function workspaceRoutes() {
 
   app.delete("/:slug/projects/:projectSlug/repos/:repoId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json(await ingest.unlinkRepo(user.id, c.req.param("repoId")));
   });
 
@@ -297,31 +295,23 @@ export function workspaceRoutes() {
 
   app.post("/:slug/projects/:projectSlug/repos/:repoId/backfill", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json(await ingest.backfillRepo(user.id, c.req.param("repoId")));
   });
 
   app.get("/:slug/projects/:projectSlug/commits", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    const commits = await ingest.listCommits(
-      user.id,
-      project.id,
-      ingest.parseCommitFilters(c.req.query())
-    );
+    const commits = await ingest.opListCommits(project.id, ingest.parseCommitFilters(c.req.query()));
     return c.json({ commits });
   });
 
   app.get("/:slug/projects/:projectSlug/stats", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ stats: await stats.projectStats(user.id, project.id) });
+    return c.json({ stats: await stats.opProjectStats(project.id) });
   });
 
   app.get("/:slug/projects/:projectSlug/leaderboard", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ leaderboard: await leaderboard.projectLeaderboard(user.id, project.id) });
+    return c.json({ leaderboard: await leaderboard.opProjectLeaderboard(project.id) });
   });
 
   app.put("/:slug/projects/:projectSlug/domain-config", async (c) => {
@@ -335,9 +325,8 @@ export function workspaceRoutes() {
 
   // ─── F3: Objetivo, informes y notas (flujo Hermes generalizado) ────
   app.get("/:slug/projects/:projectSlug/objective", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ objective: await reports.getObjective(user.id, project.id) });
+    return c.json({ objective: await reports.opGetObjective(project.id) });
   });
 
   app.put("/:slug/projects/:projectSlug/objective", async (c) => {
@@ -349,17 +338,15 @@ export function workspaceRoutes() {
   });
 
   app.get("/:slug/projects/:projectSlug/objective/history", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ history: await reports.listObjectiveHistory(user.id, project.id) });
+    return c.json({ history: await reports.opListObjectiveHistory(project.id) });
   });
 
   app.get("/:slug/projects/:projectSlug/reports", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
     const scope = c.req.query("scope");
     return c.json({
-      reports: await reports.listReports(user.id, project.id, {
+      reports: await reports.opListReports(project.id, {
         scope: scope === "day" || scope === "general" ? scope : undefined,
         limit: Number(c.req.query("limit")) || undefined,
       }),
@@ -377,22 +364,19 @@ export function workspaceRoutes() {
 
   app.get("/:slug/projects/:projectSlug/reports/:reportId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json({ report: await reports.getReport(user.id, c.req.param("reportId")) });
   });
 
   app.delete("/:slug/projects/:projectSlug/reports/:reportId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json(await reports.deleteReport(user.id, c.req.param("reportId")));
   });
 
   app.get("/:slug/projects/:projectSlug/notes", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
     const status = c.req.query("status");
     return c.json({
-      notes: await reports.listNotes(user.id, project.id, {
+      notes: await reports.opListNotes(project.id, {
         status: status === "pending" || status === "processed" ? status : undefined,
         limit: Number(c.req.query("limit")) || undefined,
       }),
@@ -409,7 +393,6 @@ export function workspaceRoutes() {
 
   app.post("/:slug/projects/:projectSlug/notes/:noteId/answer", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     const body = answerNoteSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Respuesta inválida", "invalid_body");
     const note = await reports.answerNote(user.id, c.req.param("noteId"), body.data.response, body.data.reportId);
@@ -418,9 +401,8 @@ export function workspaceRoutes() {
 
   // ─── F4: Agentes (por proyecto) ────────────────────────────────────
   app.get("/:slug/projects/:projectSlug/agents", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ agents: await agentsSvc.listAgents(user.id, project.id) });
+    return c.json({ agents: await agentsSvc.opListAgents(project.id) });
   });
 
   app.post("/:slug/projects/:projectSlug/agents", async (c) => {
@@ -433,10 +415,11 @@ export function workspaceRoutes() {
   });
 
   app.get("/:slug/projects/:projectSlug/audit", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
     const limit = Number(c.req.query("limit")) || undefined;
-    return c.json({ auditLogs: await agentsSvc.listAuditLogsForProject(user.id, project.id, limit) });
+    return c.json({
+      auditLogs: await agentsSvc.opListAuditLogsForProject(project.workspaceId, project.id, limit),
+    });
   });
 
   // ─── F4: Agentes del workspace (todos los proyectos) ───────────────
@@ -491,9 +474,8 @@ export function workspaceRoutes() {
 
   // ─── F5: Épicas e Historias de Usuario ─────────────────────────────
   app.get("/:slug/projects/:projectSlug/epics", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ epics: await stories.listEpics(user.id, project.id) });
+    return c.json({ epics: await stories.opListEpics(project.id) });
   });
 
   app.post("/:slug/projects/:projectSlug/epics", async (c) => {
@@ -505,10 +487,9 @@ export function workspaceRoutes() {
   });
 
   app.get("/:slug/projects/:projectSlug/user-stories", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
     return c.json({
-      userStories: await stories.listStories(user.id, project.id, {
+      userStories: await stories.opListStories(project.id, {
         status: c.req.query("status"),
         epicId: c.req.query("epicId"),
       }),
@@ -516,9 +497,8 @@ export function workspaceRoutes() {
   });
 
   app.get("/:slug/projects/:projectSlug/contributors", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ contributors: await stories.listContributors(user.id, project.id) });
+    return c.json({ contributors: await stories.opListContributors(project.id) });
   });
 
   app.post("/:slug/projects/:projectSlug/user-stories", async (c) => {
@@ -531,13 +511,11 @@ export function workspaceRoutes() {
 
   app.get("/:slug/projects/:projectSlug/user-stories/:storyId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json({ userStory: await stories.getStory(user.id, c.req.param("storyId")) });
   });
 
   app.patch("/:slug/projects/:projectSlug/user-stories/:storyId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     const body = updateStorySchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos de la HU inválidos", "invalid_body");
     return c.json({ userStory: await stories.updateStory(user.id, c.req.param("storyId"), body.data) });
@@ -545,7 +523,6 @@ export function workspaceRoutes() {
 
   app.delete("/:slug/projects/:projectSlug/user-stories/:storyId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     // `?keepCard=1` conserva la tarjeta desvinculada; sin él se borra con la HU.
     // Contra un default destructivo el parseo tiene que ser generoso con lo que
     // la gente escribe y ruidoso con lo que no entiende: silencioso y estricto
@@ -561,9 +538,8 @@ export function workspaceRoutes() {
 
   // ─── F6: Kanban ────────────────────────────────────────────────────
   app.get("/:slug/projects/:projectSlug/board", async (c) => {
-    const user = requireUser(c);
     const project = await resolveProject(c);
-    return c.json({ board: await board.getBoard(user.id, project.id) });
+    return c.json({ board: await board.opListBoard(project.id) });
   });
 
   app.post("/:slug/projects/:projectSlug/board/cards", async (c) => {
@@ -576,7 +552,6 @@ export function workspaceRoutes() {
 
   app.patch("/:slug/projects/:projectSlug/board/cards/:cardId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     const body = updateCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos de la tarjeta inválidos", "invalid_body");
     return c.json({ card: await board.updateCard(user.id, c.req.param("cardId"), body.data) });
@@ -584,13 +559,11 @@ export function workspaceRoutes() {
 
   app.delete("/:slug/projects/:projectSlug/board/cards/:cardId", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     return c.json(await board.deleteCard(user.id, c.req.param("cardId")));
   });
 
   app.get("/:slug/projects/:projectSlug/board/cards/:cardId/activities", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     const limit = Number(c.req.query("limit")) || undefined;
     return c.json({
       activities: await board.listCardActivities(user.id, c.req.param("cardId"), limit),
@@ -599,7 +572,6 @@ export function workspaceRoutes() {
 
   app.post("/:slug/projects/:projectSlug/board/cards/:cardId/move", async (c) => {
     const user = requireUser(c);
-    await resolveProject(c);
     const body = moveCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) throw badRequest("Datos de movimiento inválidos", "invalid_body");
     return c.json({ card: await board.moveCard(user.id, c.req.param("cardId"), body.data) });

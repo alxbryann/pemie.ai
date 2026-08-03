@@ -111,6 +111,11 @@ export async function linkRepo(userId: string, projectId: string, input: LinkRep
 /** Lista los repos vinculados a un proyecto, con conteo de commits (viewer+). */
 export async function listRepos(userId: string, projectId: string) {
   await projectWithAccess(userId, projectId);
+  return opListRepos(projectId);
+}
+
+/** Operación (ya autorizada): lista los repos vinculados a un proyecto. */
+export function opListRepos(projectId: string) {
   return prisma.repo.findMany({
     where: { projectId },
     orderBy: { createdAt: "asc" },

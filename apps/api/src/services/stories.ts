@@ -37,6 +37,11 @@ export async function createEpic(
 /** Lista las épicas de un proyecto con su conteo de HUs (viewer+). */
 export async function listEpics(userId: string, projectId: string) {
   await projectWithAccess(userId, projectId);
+  return opListEpics(projectId);
+}
+
+/** Operación (ya autorizada): lista las épicas de un proyecto. */
+export function opListEpics(projectId: string) {
   return prisma.epic.findMany({
     where: { projectId },
     orderBy: { createdAt: "asc" },

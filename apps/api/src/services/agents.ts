@@ -60,6 +60,11 @@ export async function createAgent(
 /** Lista los agentes de un proyecto (viewer+). */
 export async function listAgents(userId: string, projectId: string) {
   await projectWithAccess(userId, projectId);
+  return opListAgents(projectId);
+}
+
+/** Operación (ya autorizada): lista los agentes de un proyecto. */
+export function opListAgents(projectId: string) {
   return prisma.agent.findMany({
     where: { projectId },
     orderBy: { createdAt: "asc" },
@@ -466,8 +471,13 @@ export async function listAuditLogs(userId: string, workspaceId: string, limit =
 /** Lista el AuditLog de acciones de agentes en un proyecto, más reciente primero (viewer+). */
 export async function listAuditLogsForProject(userId: string, projectId: string, limit = 100) {
   const project = await projectWithAccess(userId, projectId);
+  return opListAuditLogsForProject(project.workspaceId, projectId, limit);
+}
+
+/** Operación (ya autorizada): AuditLog de acciones de agentes en un proyecto. */
+export async function opListAuditLogsForProject(workspaceId: string, projectId: string, limit = 100) {
   const logs = await prisma.auditLog.findMany({
-    where: { workspaceId: project.workspaceId, entity: "Project", entityId: projectId },
+    where: { workspaceId, entity: "Project", entityId: projectId },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(limit, 1), 500),
   });
