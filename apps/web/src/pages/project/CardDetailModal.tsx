@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   analyticsFailureReason,
@@ -6,9 +7,8 @@ import {
   type Card as CardData,
   type CardActivity,
   type Column,
-  type Contributor,
-  type UserStory,
 } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
@@ -87,45 +87,45 @@ export default function CardDetailModal({
   onChanged: (card: CardData) => void;
   onDeleted: (cardId: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState(card.title);
   const [type, setType] = useState(card.type);
   const [description, setDescription] = useState(card.description ?? "");
   const [assigneeId, setAssigneeId] = useState(card.assigneeId ?? "");
   const [userStoryId, setUserStoryId] = useState(card.userStoryId ?? "");
   const [columnId, setColumnId] = useState(card.columnId);
-  const [contributors, setContributors] = useState<Contributor[]>([]);
-  const [stories, setStories] = useState<UserStory[]>([]);
-  const [activities, setActivities] = useState<CardActivity[]>([]);
-  const [metaLoading, setMetaLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   // Confirmación inline en vez de un segundo Modal encima: el mismo gesto que
   // ya usan las filas de Equipo para borrar.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const loadMeta = useCallback(async () => {
-    setMetaLoading(true);
-    setError(null);
-    try {
-      const [c, s, a] = await Promise.all([
-        api.contributors.list(ws, proj),
-        api.stories.list(ws, proj),
-        api.board.activities(ws, proj, card.id),
-      ]);
-      setContributors(c.contributors);
-      setStories(s.userStories);
-      setActivities(a.activities);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudieron cargar los datos");
-    } finally {
-      setMetaLoading(false);
-    }
-  }, [ws, proj, card.id]);
-
-  useEffect(() => {
-    void loadMeta();
-  }, [loadMeta]);
+  // Contributors y stories comparten caché con StoriesTab: si esa pestaña ya se
+  // visitó, el modal abre sin esperar un round-trip.
+  const contributorsQuery = useQuery({
+    queryKey: queryKeys.contributors(ws, proj),
+    queryFn: () => api.contributors.list(ws, proj).then((r) => r.contributors),
+    staleTime: STALE_TIME.live,
+  });
+  const storiesQuery = useQuery({
+    queryKey: queryKeys.stories(ws, proj),
+    queryFn: () => api.stories.list(ws, proj).then((r) => r.userStories),
+    staleTime: STALE_TIME.live,
+  });
+  const activitiesQueryKey = queryKeys.cardActivities(ws, proj, card.id);
+  const activitiesQuery = useQuery({
+    queryKey: activitiesQueryKey,
+    queryFn: () => api.board.activities(ws, proj, card.id).then((r) => r.activities),
+    staleTime: STALE_TIME.live,
+  });
+  const contributors = contributorsQuery.data ?? [];
+  const stories = storiesQuery.data ?? [];
+  const activities = activitiesQuery.data ?? [];
+  const metaLoading = contributorsQuery.isLoading || storiesQuery.isLoading || activitiesQuery.isLoading;
+  const loadError = contributorsQuery.error ?? storiesQuery.error ?? activitiesQuery.error;
+  const error =
+    actionError ?? (loadError ? (loadError instanceof ApiError ? loadError.message : "No se pudieron cargar los datos") : null);
 
   // Stories disponibles: sin tarjeta, o la vinculada a esta card.
   const storyOptions = useMemo(() => {
@@ -137,11 +137,11 @@ export default function CardDetailModal({
 
   async function save() {
     if (title.trim().length < 1) {
-      setError("El título no puede estar vacío");
+      setActionError("El título no puede estar vacío");
       return;
     }
     setSaving(true);
-    setError(null);
+    setActionError(null);
     try {
       const { card: updated } = await api.board.updateCard(ws, proj, card.id, {
         title: title.trim(),
@@ -156,11 +156,10 @@ export default function CardDetailModal({
         await api.board.moveCard(ws, proj, card.id, columnId);
         finalCard = { ...finalCard, columnId };
       }
+      queryClient.invalidateQueries({ queryKey: activitiesQueryKey });
       onChanged(finalCard);
-      const a = await api.board.activities(ws, proj, card.id);
-      setActivities(a.activities);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo guardar la tarjeta");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo guardar la tarjeta");
     } finally {
       setSaving(false);
     }
@@ -168,14 +167,14 @@ export default function CardDetailModal({
 
   async function remove() {
     setDeleting(true);
-    setError(null);
+    setActionError(null);
     try {
       await api.board.removeCard(ws, proj, card.id);
       track("board_card_deleted", { had_story: card.userStoryId !== null });
       onDeleted(card.id);
     } catch (e) {
       track("board_card_deleted_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo eliminar la tarjeta");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo eliminar la tarjeta");
       setDeleting(false);
       setConfirmingDelete(false);
     }

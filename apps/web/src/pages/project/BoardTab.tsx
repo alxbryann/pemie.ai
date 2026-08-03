@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
@@ -25,6 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api, analyticsFailureReason, ApiError, type Board, type Card as CardData, type Column } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
@@ -226,9 +228,19 @@ function BoardColumn({
 }
 
 export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
-  const [board, setBoard] = useState<Board | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const boardQueryKey = queryKeys.board(ws, proj);
+  const boardQuery = useQuery({
+    queryKey: boardQueryKey,
+    queryFn: () => api.board.get(ws, proj).then((r) => r.board),
+    staleTime: STALE_TIME.live,
+  });
+  const board = boardQuery.data ?? null;
+  const loading = boardQuery.isLoading;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error =
+    actionError ??
+    (boardQuery.error ? (boardQuery.error instanceof ApiError ? boardQuery.error.message : "Error cargando el tablero") : null);
   const [activeCard, setActiveCard] = useState<CardData | null>(null);
 
   const [title, setTitle] = useState("");
@@ -237,8 +249,12 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   // Los handlers de drag necesitan leer el tablero ya actualizado dentro del mismo
   // evento: React difiere los updaters de setState hasta el render, así que calcular
-  // dentro de uno deja los resultados sin definir para el resto del handler.
-  const boardRef = useRef<Board | null>(null);
+  // dentro de uno deja los resultados sin definir para el resto del handler. La
+  // caché de TanStack cumple el mismo rol que antes cumplía `boardRef`: se lee y
+  // se escribe de forma síncrona con `getQueryData`/`setQueryData`.
+  function currentBoard(): Board | null {
+    return queryClient.getQueryData<Board>(boardQueryKey) ?? null;
+  }
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -260,27 +276,15 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     return closestCorners(args);
   }, []);
 
-  /** Única vía de escritura del tablero: mantiene `boardRef` sincrónico con el estado. */
+  /** Única vía de escritura optimista del tablero: escribe directo en la caché. */
   function commitBoard(next: Board | null) {
-    boardRef.current = next;
-    setBoard(next);
+    queryClient.setQueryData(boardQueryKey, next);
   }
 
-  async function load() {
-    setError(null);
-    try {
-      const r = await api.board.get(ws, proj);
-      commitBoard(r.board);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Error cargando el tablero");
-    } finally {
-      setLoading(false);
-    }
+  /** Descarta cualquier mutación optimista y vuelve a pedirle al servidor el estado real. */
+  function resyncBoard() {
+    return queryClient.invalidateQueries({ queryKey: boardQueryKey });
   }
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws, proj]);
 
   // Indica si hay más columnas fuera del viewport (el tablero solía cortarse sin aviso).
   useEffect(() => {
@@ -303,15 +307,16 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   async function addCard(e: React.FormEvent) {
     e.preventDefault();
     if (title.trim().length < 1) return;
+    setActionError(null);
     try {
       await api.board.createCard(ws, proj, { title: title.trim(), type });
       track("board_card_created", { card_type: type });
       setTitle("");
       setType("task");
-      await load();
+      await resyncBoard();
     } catch (e) {
       track("board_card_created_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo crear la tarjeta");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo crear la tarjeta");
     }
   }
 
@@ -321,10 +326,13 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       await api.board.moveCard(ws, proj, cardId, columnId, order);
       if (fromColumn && fromColumn !== columnId)
         track("board_card_moved", { from_column: fromColumn, to_column: columnId });
-      await load();
+      await resyncBoard();
+      // Un movimiento puede haber entrado o salido de "Hecho": el leaderboard
+      // se deriva de eso y quedaría mostrando un ranking viejo si no se avisa.
+      queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard(ws, proj) });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo mover la tarjeta");
-      await load();
+      setActionError(e instanceof ApiError ? e.message : "No se pudo mover la tarjeta");
+      await resyncBoard();
     }
   }
 
@@ -335,11 +343,11 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   function applyCardUpdate(updated: CardData) {
     setSelectedCard(null);
-    const prev = boardRef.current;
+    const prev = currentBoard();
     if (!prev) return;
     // Si cambió de columna, recargar para respetar orden del servidor.
     const current = prev.columns.flatMap((c) => c.cards).find((c) => c.id === updated.id);
-    if (!current || current.columnId !== updated.columnId) return void load();
+    if (!current || current.columnId !== updated.columnId) return void resyncBoard();
     commitBoard({
       ...prev,
       columns: prev.columns.map((col) => ({
@@ -351,7 +359,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
   function applyCardDelete(cardId: string) {
     setSelectedCard(null);
-    const prev = boardRef.current;
+    const prev = currentBoard();
     if (!prev) return;
     commitBoard({
       ...prev,
@@ -363,7 +371,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
   }
 
   function handleDragStart(event: DragStartEvent) {
-    const prev = boardRef.current;
+    const prev = currentBoard();
     if (!prev) return;
     setActiveCard(prev.columns.flatMap((c) => c.cards).find((c) => c.id === event.active.id) ?? null);
   }
@@ -372,9 +380,9 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     const { active, over } = event;
     if (!over) return;
 
-    // Leer de `boardRef` y no del closure: un dragOver rápido tras el primero
+    // Leer de la caché y no del closure: un dragOver rápido tras el primero
     // encontraría `board` desactualizado, con activeIndex === -1, y se atascaría.
-    const prev = boardRef.current;
+    const prev = currentBoard();
     if (!prev) return;
     const activeContainer = findContainer(prev, String(active.id));
     const overContainer = findContainer(prev, String(over.id));
@@ -400,19 +408,19 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     const { active, over } = event;
     // Soltar fuera de cualquier columna: handleDragOver ya pudo haber movido la tarjeta
     // de forma optimista a otro contenedor, así que hay que resincronizar con el servidor.
-    if (!over) return void load();
+    if (!over) return void resyncBoard();
 
-    const prev = boardRef.current;
-    if (!prev) return void load();
+    const prev = currentBoard();
+    if (!prev) return void resyncBoard();
     const container = findContainer(prev, String(over.id));
-    if (!container) return void load();
+    if (!container) return void resyncBoard();
 
     const columns = prev.columns.map((c) => ({ ...c, cards: [...c.cards] }));
     const col = columns.find((c) => c.id === container);
-    if (!col) return void load();
+    if (!col) return void resyncBoard();
     const activeIndex = col.cards.findIndex((c) => c.id === active.id);
     const overIndex = col.cards.findIndex((c) => c.id === over.id);
-    if (activeIndex === -1) return void load();
+    if (activeIndex === -1) return void resyncBoard();
     if (overIndex !== -1 && activeIndex !== overIndex) {
       col.cards = arrayMove(col.cards, activeIndex, overIndex);
     }
@@ -468,7 +476,7 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
           setActiveCard(null);
           // Cancelar (p. ej. Escape durante un drag por teclado) puede dejar el
           // reordenamiento optimista de handleDragOver sin persistir — resincroniza.
-          void load();
+          void resyncBoard();
         }}
         accessibility={{ announcements: announcements(board) }}
       >

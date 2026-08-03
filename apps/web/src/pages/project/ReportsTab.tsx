@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, analyticsFailureReason, ApiError, type Note, type Objective, type Report } from "../../lib/api.js";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, analyticsFailureReason, ApiError } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
@@ -15,62 +17,73 @@ import {
 } from "../../components/ui.js";
 
 export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
-  const [objective, setObjective] = useState<Objective | null>(null);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const objectiveQuery = useQuery({
+    queryKey: queryKeys.objective(ws, proj),
+    queryFn: () => api.objective.get(ws, proj).then((r) => r.objective),
+    staleTime: STALE_TIME.moderate,
+  });
+  const reportsQuery = useQuery({
+    queryKey: queryKeys.reports(ws, proj),
+    queryFn: () => api.reports.list(ws, proj).then((r) => r.reports),
+    staleTime: STALE_TIME.moderate,
+  });
+  const notesQuery = useQuery({
+    queryKey: queryKeys.notes(ws, proj),
+    queryFn: () => api.notes.list(ws, proj).then((r) => r.notes),
+    staleTime: STALE_TIME.moderate,
+  });
+  const objective = objectiveQuery.data ?? null;
+  const reports = reportsQuery.data ?? [];
+  const notes = notesQuery.data ?? [];
+  const loading = objectiveQuery.isLoading || reportsQuery.isLoading || notesQuery.isLoading;
+  const loadError = objectiveQuery.error ?? reportsQuery.error ?? notesQuery.error;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error =
+    actionError ?? (loadError ? (loadError instanceof ApiError ? loadError.message : "Error cargando informes") : null);
 
   const [objText, setObjText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
-  async function load() {
-    setError(null);
-    try {
-      const [o, r, n] = await Promise.all([
-        api.objective.get(ws, proj),
-        api.reports.list(ws, proj),
-        api.notes.list(ws, proj),
-      ]);
-      setObjective(o.objective);
-      setObjText(o.objective?.description ?? "");
-      setReports(r.reports);
-      setNotes(n.notes);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Error cargando informes");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Sincroniza el textarea con el objetivo del servidor solo al entrar al
+  // proyecto (o la primera vez que llega la respuesta) — nunca en una
+  // revalidación en segundo plano: si no, un refetch por window focus
+  // borraría lo que la persona está escribiendo en ese momento.
+  const syncedFor = useRef<string | null>(null);
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws, proj]);
+    const key = `${ws}/${proj}`;
+    if (objectiveQuery.isSuccess && syncedFor.current !== key) {
+      syncedFor.current = key;
+      setObjText(objective?.description ?? "");
+    }
+  }, [ws, proj, objectiveQuery.isSuccess, objective]);
 
   async function saveObjective() {
     if (objText.trim().length < 3) return;
+    setActionError(null);
     try {
-      const r = await api.objective.set(ws, proj, objText.trim());
+      await api.objective.set(ws, proj, objText.trim());
       track("report_objective_set");
-      setObjective(r.objective);
+      queryClient.invalidateQueries({ queryKey: queryKeys.objective(ws, proj) });
     } catch (e) {
       track("report_objective_set_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo guardar el objetivo");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo guardar el objetivo");
     }
   }
 
   async function addNote(e: React.FormEvent) {
     e.preventDefault();
     if (!noteText.trim()) return;
+    setActionError(null);
     try {
       await api.notes.create(ws, proj, noteText.trim());
       track("report_note_created");
       setNoteText("");
-      await load();
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes(ws, proj) });
     } catch (e) {
       track("report_note_created_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo crear la nota");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo crear la nota");
     }
   }
 
@@ -82,7 +95,9 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
       .then(() => track("report_note_answered"))
       .catch((e) => track("report_note_answered_failed", { reason: analyticsFailureReason(e) }));
     setAnswers((a) => ({ ...a, [id]: "" }));
-    await load();
+    // La respuesta puede quedar linkeada a un informe (`_count.notes` cambia).
+    queryClient.invalidateQueries({ queryKey: queryKeys.notes(ws, proj) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.reports(ws, proj) });
   }
 
   if (loading)

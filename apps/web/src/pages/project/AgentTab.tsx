@@ -1,28 +1,25 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, type AuditLog } from "../../lib/api.js";
+import { useQuery } from "@tanstack/react-query";
+import { api, ApiError } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { Badge, Card, EmptyState, ErrorText, Skeleton, SkeletonList } from "../../components/ui.js";
 
 /** Actividad de alcance proyecto; la conexión y los agentes viven ahora en Equipo. */
 export default function AgentTab({ ws, proj }: { ws: string; proj: string }) {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.projectAudit(ws, proj),
+    queryFn: () => api.audit.listForProject(ws, proj).then((r) => r.auditLogs),
+    staleTime: STALE_TIME.moderate,
+  });
+  const logs = data ?? [];
+  const errorMessage = error instanceof ApiError ? error.message : error ? "No se pudo cargar la actividad" : null;
 
-  useEffect(() => {
-    setLoading(true);
-    api.audit.listForProject(ws, proj)
-      .then((result) => setLogs(result.auditLogs))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No se pudo cargar la actividad"))
-      .finally(() => setLoading(false));
-  }, [ws, proj]);
-
-  if (loading) {
+  if (isLoading) {
     return <Card><Skeleton className="mb-4 h-5 w-48" /><SkeletonList rows={4} /></Card>;
   }
 
   return (
     <div className="space-y-6">
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{errorMessage}</ErrorText>
       <Card>
         <h3 className="text-h4 text-ink-900">Actividad del proyecto</h3>
         <p className="mt-2 text-body-sm text-ink-600">Audit de las acciones hechas por personas, agentes y API keys en este proyecto.</p>

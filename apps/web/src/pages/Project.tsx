@@ -55,7 +55,7 @@ export default function Project() {
         className="mb-6"
       />
 
-      {tab === "commits" && <CommitsTab ws={slug} proj={projectSlug} />}
+      {tab === "commits" && <CommitsTab ws={slug} proj={projectSlug} project={project} />}
       {tab === "reports" && <ReportsTab ws={slug} proj={projectSlug} />}
       {tab === "stories" && <StoriesTab ws={slug} proj={projectSlug} />}
       {tab === "board" && <BoardTab ws={slug} proj={projectSlug} />}

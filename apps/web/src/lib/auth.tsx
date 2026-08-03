@@ -4,6 +4,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type User } from "./api.js";
 import { applyAnalyticsConsent, identifyUser, resetAnalytics, track } from "./analytics/index.js";
+import { queryClient } from "./queryClient.js";
 
 interface AuthState {
   user: User | null;
@@ -48,16 +49,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh,
     login: async (email, password) => {
       const { user } = await api.auth.login({ email, password });
+      // Una sesión que caducó sin pasar por logout deja su caché en memoria;
+      // entrar con otra cuenta sin limpiarla mostraría datos del anterior.
+      queryClient.clear();
       applyUser(user);
     },
     register: async (email, password, name) => {
       const { user } = await api.auth.register({ email, password, name });
+      queryClient.clear();
       applyUser(user);
     },
     logout: async () => {
       await api.auth.logout();
       track("user_logged_out"); // antes del reset: todavía identificado como el usuario que sale
       resetAnalytics();
+      // La caché de queries sobrevive al desmontaje de las vistas: sin esto,
+      // tableros, historias y repos de GitHub del usuario que sale quedarían
+      // disponibles para quien entre después en el mismo navegador.
+      queryClient.clear();
       setUser(null);
     },
     setAnalyticsPreference: async (enabled) => {

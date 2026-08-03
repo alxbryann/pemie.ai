@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_DOMAIN_CONFIG, type DomainConfig } from "@pemie/shared";
 import {
   api,
   ApiError,
-  type Commit,
   type GithubUserRepo,
-  type Repo,
-  type Stats,
+  type Project,
   type SyncResult,
 } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
@@ -33,22 +33,41 @@ const DATE_PRESETS = [
   { value: "90", label: "Últimos 90 días" },
 ];
 
+/**
+ * Inicio (UTC) del día que abre la ventana del preset.
+ *
+ * El redondeo al día no es cosmético: este valor alimenta la query key del
+ * listado de commits, y un `Date.now()` con precisión de milisegundos daba una
+ * key distinta en cada render — cache miss, refetch, render, y otra vez, en un
+ * bucle que no paraba mientras hubiera un preset de fecha activo. Al día, la
+ * key solo cambia cuando cambia el día.
+ */
 function presetToSince(preset: string): string | undefined {
   if (!preset) return undefined;
-  const days = Number(preset);
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - Number(preset));
+  return start.toISOString();
 }
 
-export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [commits, setCommits] = useState<Commit[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(null);
+/**
+ * Último auto-sync por proyecto (`ws/proj`), en epoch ms. Vive a nivel de módulo
+ * y no en un `useRef`: salir del tab y volver remonta el componente, y con un ref
+ * el guard nacería vacío y repetiría el sync —con su llamada a GitHub— en cada
+ * cambio de pestaña. La ventana coincide con el `STALE_AFTER_MS` del backend:
+ * antes de eso el modo `auto` no tiene nada que traer, y después vuelve a valer
+ * la pena, así una sesión larga no se queda sin sincronizar para siempre.
+ */
+const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+const lastAutoSyncAt = new Map<string, number>();
+
+export default function CommitsTab({ ws, proj, project }: { ws: string; proj: string; project: Project }) {
+  const queryClient = useQueryClient();
+  const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(project.domainConfig);
   const [domainFilter, setDomainFilter] = useState<string | null>(null);
   const [contributorFilter, setContributorFilter] = useState<string | null>(null);
   const [datePreset, setDatePreset] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Sincronización manual con GitHub (usa el token OAuth de la sesión).
   const [syncing, setSyncing] = useState(false);
@@ -56,11 +75,41 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
   // Selector de repos de GitHub
   const [picker, setPicker] = useState(false);
-  const [ghRepos, setGhRepos] = useState<GithubUserRepo[] | null>(null);
-  const [ghLoading, setGhLoading] = useState(false);
-  const [ghNotConnected, setGhNotConnected] = useState(false);
   const [query, setQuery] = useState("");
   const [linking, setLinking] = useState<string | null>(null);
+
+  const commitsFilter = useMemo(() => {
+    const since = presetToSince(datePreset);
+    return {
+      limit: 50,
+      ...(domainFilter ? { domain: domainFilter } : {}),
+      ...(contributorFilter ? { contributorId: contributorFilter } : {}),
+      ...(since ? { since } : {}),
+    };
+  }, [domainFilter, contributorFilter, datePreset]);
+
+  const reposQuery = useQuery({
+    queryKey: queryKeys.repos(ws, proj),
+    queryFn: () => api.repos.list(ws, proj).then((r) => r.repos),
+    staleTime: STALE_TIME.slow,
+  });
+  const statsQuery = useQuery({
+    queryKey: queryKeys.stats(ws, proj),
+    queryFn: () => api.stats.get(ws, proj).then((r) => r.stats),
+    staleTime: STALE_TIME.slow,
+  });
+  const commitsQuery = useQuery({
+    queryKey: queryKeys.commits(ws, proj, commitsFilter),
+    queryFn: () => api.commits.list(ws, proj, commitsFilter).then((r) => r.commits),
+    staleTime: STALE_TIME.slow,
+  });
+  const repos = reposQuery.data ?? [];
+  const stats = statsQuery.data ?? null;
+  const commits = commitsQuery.data ?? [];
+  const loading = reposQuery.isLoading || statsQuery.isLoading;
+  const loadError = reposQuery.error ?? statsQuery.error ?? commitsQuery.error;
+  const error =
+    actionError ?? (loadError ? (loadError instanceof ApiError ? loadError.message : "Error cargando la ingesta") : null);
 
   const resolvedConfig = domainConfig ?? DEFAULT_DOMAIN_CONFIG;
   const labelByKey = useMemo(() => {
@@ -68,90 +117,36 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
     return map;
   }, [resolvedConfig]);
 
-  /** Repos, stats y config de dominio — no depende de los filtros de commits. */
-  async function load() {
-    setError(null);
-    try {
-      const [r, s, p] = await Promise.all([
-        api.repos.list(ws, proj),
-        api.stats.get(ws, proj),
-        api.projects.get(ws, proj),
-      ]);
-      setRepos(r.repos);
-      setStats(s.stats);
-      setDomainConfig(p.project.domainConfig);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Error cargando la ingesta");
-    } finally {
-      setLoading(false);
-    }
+  /** Invalida todo lo que un sync/link/unlink puede afectar: repos, stats y commits (cualquier filtro). */
+  function invalidateIngestData() {
+    queryClient.invalidateQueries({ queryKey: queryKeys.repos(ws, proj) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.stats(ws, proj) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.commitsAll(ws, proj) });
   }
 
-  // Contador de request: si el usuario cambia de filtro rápido, descarta
-  // cualquier respuesta que no sea la del último pedido en vuelo.
-  const commitsRequestId = useRef(0);
-  /**
-   * Lista de commits — separado de `load()` porque cambia con cada filtro sin
-   * necesidad de re-pedir repos/stats. Acepta overrides explícitos para el
-   * primer fetch en el efecto de montaje/cambio de proyecto: en ese momento
-   * el estado de los filtros todavía no reflejó el reset (closure viejo), así
-   * que no se puede confiar en leerlo directamente.
-   */
-  async function loadCommits(
-    domain: string | null = domainFilter,
-    contributorId: string | null = contributorFilter,
-    preset: string = datePreset
-  ) {
-    const requestId = ++commitsRequestId.current;
-    const since = presetToSince(preset);
-    try {
-      const { commits: c } = await api.commits.list(ws, proj, {
-        limit: 50,
-        ...(domain ? { domain } : {}),
-        ...(contributorId ? { contributorId } : {}),
-        ...(since ? { since } : {}),
-      });
-      if (requestId !== commitsRequestId.current) return; // respuesta obsoleta
-      setCommits(c);
-    } catch (e) {
-      if (requestId !== commitsRequestId.current) return;
-      setError(e instanceof ApiError ? e.message : "Error cargando los commits");
-    }
-  }
-
-  // Abrir la pestaña sincroniza sola: primero se pinta lo que ya hay (rápido) y
-  // en segundo plano se trae lo nuevo de GitHub. `autoSynced` evita repetirlo
-  // en el doble montaje de StrictMode y al volver de un re-render.
-  const autoSynced = useRef<string | null>(null);
-  // Se arma en `false` cada vez que este efecto corre para que el efecto de
-  // filtros (abajo) ignore el re-disparo que provoca el reset de filtros al
-  // cambiar de proyecto — si no, se dispararía loadCommits() dos veces.
-  const skipNextFiltersFetch = useRef(true);
+  // Al cambiar de proyecto, los filtros del anterior no aplican (contributorId
+  // y domain son específicos de cada proyecto) y la config de dominio ya llega
+  // fresca en `project` — no hace falta pedirla de nuevo.
   useEffect(() => {
-    const key = `${ws}/${proj}`;
-    skipNextFiltersFetch.current = true;
     setDomainFilter(null);
     setContributorFilter(null);
     setDatePreset("");
-    load();
-    loadCommits(null, null, "").then(() => {
-      if (autoSynced.current === key) return;
-      autoSynced.current = key;
-      autoSync();
-    });
+    setDomainConfig(project.domainConfig);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, proj]);
 
-  // Refetch de commits cuando cambia cualquier filtro (no en el primer
-  // disparo tras un reset de filtros — ese ya lo hace el efecto de arriba).
+  // Abrir la pestaña sincroniza sola: lo que ya hay se pinta al instante desde
+  // la caché y en segundo plano se trae lo nuevo de GitHub. La marca de tiempo
+  // cubre el doble montaje de StrictMode y las vueltas a este tab, sin dejar la
+  // sesión sin sincronizar cuando la app queda abierta mucho rato.
   useEffect(() => {
-    if (skipNextFiltersFetch.current) {
-      skipNextFiltersFetch.current = false;
-      return;
-    }
-    void loadCommits();
+    const key = `${ws}/${proj}`;
+    const last = lastAutoSyncAt.get(key);
+    if (last !== undefined && Date.now() - last < AUTO_SYNC_INTERVAL_MS) return;
+    lastAutoSyncAt.set(key, Date.now());
+    void autoSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domainFilter, contributorFilter, datePreset]);
+  }, [ws, proj]);
 
   /**
    * Sincronización silenciosa al entrar: solo molesta si trajo algo o si falló.
@@ -163,7 +158,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
       const result = await api.repos.syncAll(ws, proj, "auto");
       if (result.ingested > 0 || result.failed.length > 0) {
         setSyncResult(result);
-        await Promise.all([load(), loadCommits()]);
+        invalidateIngestData();
       }
     } catch {
       // Silencioso a propósito: la vista ya tiene datos y el usuario no pidió
@@ -175,38 +170,38 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
 
   async function sync() {
     setSyncing(true);
-    setError(null);
+    setActionError(null);
     setSyncResult(null);
     try {
       const result = await api.repos.syncAll(ws, proj);
       setSyncResult(result);
-      await Promise.all([load(), loadCommits()]);
+      invalidateIngestData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo sincronizar con GitHub");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo sincronizar con GitHub");
     } finally {
       setSyncing(false);
     }
   }
 
-  async function openPicker() {
+  const githubReposQuery = useQuery({
+    queryKey: ["githubRepos"],
+    queryFn: () => api.auth.githubRepos().then((r) => r.repos),
+    enabled: picker,
+    staleTime: STALE_TIME.moderate,
+    retry: false,
+  });
+  const ghRepos = githubReposQuery.data ?? null;
+  const ghLoading = githubReposQuery.isLoading;
+  const ghNotConnected =
+    githubReposQuery.error instanceof ApiError && githubReposQuery.error.code === "github_not_connected";
+
+  function openPicker() {
     setPicker(true);
-    if (ghRepos || ghLoading) return;
-    setGhLoading(true);
-    setGhNotConnected(false);
-    try {
-      const r = await api.auth.githubRepos();
-      setGhRepos(r.repos);
-    } catch (e) {
-      if (e instanceof ApiError && e.code === "github_not_connected") setGhNotConnected(true);
-      else setError(e instanceof ApiError ? e.message : "No se pudieron cargar tus repos");
-    } finally {
-      setGhLoading(false);
-    }
   }
 
   async function linkFromGithub(r: GithubUserRepo) {
     setLinking(r.fullName);
-    setError(null);
+    setActionError(null);
     setSyncResult(null);
     try {
       // El backend hace una primera sincronización al vincular.
@@ -221,19 +216,16 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
         ingested,
         failed: syncError ? [{ repo: r.fullName, error: syncError }] : [],
       });
-      await Promise.all([load(), loadCommits()]);
+      invalidateIngestData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo vincular el repo");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo vincular el repo");
     } finally {
       setLinking(null);
     }
   }
 
   async function unlink(id: string) {
-    await api.repos
-      .unlink(ws, proj, id)
-      .then(() => Promise.all([load(), loadCommits()]))
-      .catch(() => {});
+    await api.repos.unlink(ws, proj, id).then(invalidateIngestData).catch(() => {});
   }
 
   function toggleDomainFilter(key: string) {
@@ -347,8 +339,10 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
         initial={domainConfig}
         onSaved={(config) => {
           setDomainConfig(config);
-          void load();
-          void loadCommits();
+          // Reclasifica TODOS los commits del proyecto — hay que invalidar
+          // stats y las variantes de commits sin importar el filtro activo.
+          queryClient.invalidateQueries({ queryKey: queryKeys.stats(ws, proj) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.commitsAll(ws, proj) });
         }}
       />
 
@@ -565,7 +559,7 @@ export default function CommitsTab({ ws, proj }: { ws: string; proj: string }) {
           </div>
         </div>
         <div className="mt-4">
-          {commits.length === 0 && syncing ? (
+          {commits.length === 0 && (commitsQuery.isFetching || syncing) ? (
             <SkeletonList rows={5} />
           ) : commits.length === 0 ? (
             <EmptyState

@@ -1,29 +1,18 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, type LeaderboardEntry } from "../../lib/api.js";
+import { useQuery } from "@tanstack/react-query";
+import { api, ApiError } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { Avatar, Badge, Card, EmptyState, ErrorText, SkeletonList } from "../../components/ui.js";
 
 export default function LeaderboardTab({ ws, proj }: { ws: string; proj: string }) {
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.leaderboard(ws, proj),
+    queryFn: () => api.leaderboard.get(ws, proj).then((r) => r.leaderboard),
+    staleTime: STALE_TIME.moderate,
+  });
+  const entries = data ?? [];
+  const errorMessage = error instanceof ApiError ? error.message : error ? "Error cargando el leaderboard" : null;
 
-  async function load() {
-    setError(null);
-    try {
-      const { leaderboard } = await api.leaderboard.get(ws, proj);
-      setEntries(leaderboard);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Error cargando el leaderboard");
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws, proj]);
-
-  if (loading)
+  if (isLoading)
     return (
       <Card>
         <SkeletonList rows={4} />
@@ -32,7 +21,7 @@ export default function LeaderboardTab({ ws, proj }: { ws: string; proj: string 
 
   return (
     <div className="space-y-6">
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{errorMessage}</ErrorText>
 
       <Card>
         <h3 className="text-h4 text-ink-900">Leaderboard</h3>

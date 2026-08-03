@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, analyticsFailureReason, ApiError, type Epic, type UserStory } from "../../lib/api.js";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, analyticsFailureReason, ApiError, type UserStory } from "../../lib/api.js";
+import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
 import {
   Badge,
@@ -37,10 +39,31 @@ const PRIORITY_TONE: Record<string, BadgeTone> = {
 };
 
 export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
-  const [stories, setStories] = useState<UserStory[]>([]);
-  const [epics, setEpics] = useState<Epic[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const storiesQuery = useQuery({
+    queryKey: queryKeys.stories(ws, proj),
+    queryFn: () => api.stories.list(ws, proj).then((r) => r.userStories),
+    staleTime: STALE_TIME.live,
+  });
+  const epicsQuery = useQuery({
+    queryKey: queryKeys.epics(ws, proj),
+    queryFn: () => api.epics.list(ws, proj).then((r) => r.epics),
+    staleTime: STALE_TIME.live,
+  });
+  const stories = storiesQuery.data ?? [];
+  const epics = epicsQuery.data ?? [];
+  const loading = storiesQuery.isLoading || epicsQuery.isLoading;
+  const loadError = storiesQuery.error ?? epicsQuery.error;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error =
+    actionError ?? (loadError ? (loadError instanceof ApiError ? loadError.message : "Error cargando historias") : null);
+
+  /** HU + board comparten tarjeta (una HU nueva crea su card): invalidar ambas. */
+  function invalidateAfterStoryChange() {
+    queryClient.invalidateQueries({ queryKey: queryKeys.stories(ws, proj) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.epics(ws, proj) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.board(ws, proj) });
+  }
 
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -55,26 +78,10 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
   // se vaya con ella. Quien quiera conservarla lo desmarca (PEM-19).
   const [deleteCard, setDeleteCard] = useState(true);
 
-  async function load() {
-    setError(null);
-    try {
-      const [s, e] = await Promise.all([api.stories.list(ws, proj), api.epics.list(ws, proj)]);
-      setStories(s.userStories);
-      setEpics(e.epics);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Error cargando historias");
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws, proj]);
-
   async function createStory(e: React.FormEvent) {
     e.preventDefault();
     if (title.trim().length < 2) return;
+    setActionError(null);
     try {
       await api.stories.create(ws, proj, {
         title: title.trim(),
@@ -88,22 +95,34 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
       setWant("");
       setBenefit("");
       setPriority("medium");
-      await load();
+      invalidateAfterStoryChange();
     } catch (e) {
       track("story_created_failed", { reason: analyticsFailureReason(e) });
-      setError(e instanceof ApiError ? e.message : "No se pudo crear la HU");
+      setActionError(e instanceof ApiError ? e.message : "No se pudo crear la HU");
     }
   }
 
   async function setStatus(id: string, status: string) {
+    const key = queryKeys.stories(ws, proj);
     const from = stories.find((s) => s.id === id)?.status;
-    setStories((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
-    await api.stories
-      .update(ws, proj, id, { status })
-      .then(() => {
-        if (from && from !== status) track("story_status_changed", { from_status: from, to_status: status });
-      })
-      .catch(() => load());
+    // Cancelar primero los refetches en vuelo: uno que resolviera después de la
+    // escritura optimista la pisaría con el estado anterior del servidor.
+    await queryClient.cancelQueries({ queryKey: key });
+    const previous = queryClient.getQueryData<UserStory[]>(key);
+    queryClient.setQueryData<UserStory[]>(key, (prev) =>
+      (prev ?? []).map((s) => (s.id === id ? { ...s, status } : s))
+    );
+    try {
+      await api.stories.update(ws, proj, id, { status });
+      if (from && from !== status) track("story_status_changed", { from_status: from, to_status: status });
+      // Cada tarjeta del tablero embebe el `status` de su HU: sin invalidarlo
+      // el Kanban sigue mostrando el estado viejo hasta que expire su staleTime.
+      queryClient.invalidateQueries({ queryKey: queryKeys.board(ws, proj) });
+    } catch {
+      // Corrige de inmediato con el valor anterior; no hace falta esperar el
+      // round-trip de un refetch para que la UI deje de mentir.
+      queryClient.setQueryData(key, previous);
+    }
   }
 
   async function confirmDelete() {
@@ -115,7 +134,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
       track("story_deleted", { card_deleted: deleteCard });
       setPendingDelete(null);
       setDeleteCard(true);
-      await load();
+      invalidateAfterStoryChange();
     } catch (e) {
       track("story_delete_failed", { reason: analyticsFailureReason(e) });
       setDeleteError(e instanceof ApiError ? e.message : "No se pudo eliminar la HU");
