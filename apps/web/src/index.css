@@ -61,26 +61,16 @@
     color: var(--ink-500);
   }
 
-  /* Mancha de gradiente azul del selector de workspaces: sigue al mouse (ver MouseGlow.tsx),
-     con --glow-x/--glow-y como fallback centrado arriba mientras no hubo movimiento. */
+  /* Elipse difusa detrás del saludo del launchpad de workspaces. */
   .launchpad-glow {
-    position: fixed;
-    top: 0;
-    left: 0;
+    position: absolute;
+    top: -220px;
+    left: 50%;
+    transform: translateX(-50%);
     width: 900px;
     height: 440px;
-    transform: translate3d(
-      calc(var(--glow-x, 50vw) - 450px),
-      calc(var(--glow-y, 120px) - 220px),
-      0
-    );
-    transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
-    background: radial-gradient(
-      ellipse at center,
-      color-mix(in srgb, var(--blue-600) 16%, transparent),
-      transparent 70%
-    );
+    max-width: 200vw;
+    background: radial-gradient(ellipse at center, var(--accent-tint), transparent 65%);
     pointer-events: none;
-    will-change: transform;
   }
 }
