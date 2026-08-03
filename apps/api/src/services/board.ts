@@ -75,7 +75,7 @@ export async function opListBoard(projectId: string) {
           cards: {
             orderBy: { order: "asc" },
             include: {
-              userStory: { select: { id: true, key: true, title: true, status: true } },
+              userStory: { select: { id: true, key: true, title: true, status: true, narrative: true } },
               assignee: { select: { id: true, githubLogin: true, name: true, avatarUrl: true } },
             },
           },

@@ -140,3 +140,14 @@ export interface AcceptanceCriterion {
   when: string;
   then: string;
 }
+
+/**
+ * Formatea la narrativa de una HU como una sola frase legible ("Como <rol>,
+ * quiero <want> para <benefit>"). Devuelve `null` si falta la narrativa o
+ * alguno de sus tres campos, para que el caller pueda omitir el bloque en vez
+ * de mostrar una frase a medias.
+ */
+export function formatNarrative(narrative: UserStoryNarrative | null | undefined): string | null {
+  if (!narrative?.role || !narrative?.want || !narrative?.benefit) return null;
+  return `Como ${narrative.role}, quiero ${narrative.want} para ${narrative.benefit}`;
+}

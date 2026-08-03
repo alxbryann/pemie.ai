@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatNarrative } from "@pemie/shared";
 import { api, analyticsFailureReason, ApiError, type UserStory } from "../../lib/api.js";
 import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
@@ -228,11 +229,8 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
                       </Badge>
                       <span className="text-body font-medium text-ink-900">{s.title}</span>
                     </div>
-                    {s.narrative?.role && (
-                      <p className="mt-1 text-body-sm text-ink-500">
-                        Como {s.narrative.role}, quiero {s.narrative.want} para{" "}
-                        {s.narrative.benefit}
-                      </p>
+                    {formatNarrative(s.narrative) && (
+                      <p className="mt-1 text-body-sm text-ink-500">{formatNarrative(s.narrative)}</p>
                     )}
                     <div className="mt-1.5">
                       <Badge tone={PRIORITY_TONE[s.priority] ?? "neutral"} mono>

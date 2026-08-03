@@ -1,7 +1,7 @@
 // Cliente HTTP del backend pemie-api. El frontend es puro cliente: toda la
 // lógica de negocio vive en el backend. Aquí solo hay transporte + tipos.
 
-import type { DomainConfig, Role } from "@pemie/shared";
+import type { DomainConfig, Role, UserStoryNarrative } from "@pemie/shared";
 
 // En producción el front y el API comparten dominio (el API corre como función
 // de Vercel bajo /api), así que la base es relativa: la cookie de sesión es
@@ -345,7 +345,7 @@ export interface Card {
   title: string;
   description: string | null;
   userStoryId: string | null;
-  userStory?: { id: string; key: string; title: string; status: string } | null;
+  userStory?: { id: string; key: string; title: string; status: string; narrative: UserStoryNarrative | null } | null;
   assigneeId: string | null;
   assignee?: Contributor | null;
   labels?: unknown;

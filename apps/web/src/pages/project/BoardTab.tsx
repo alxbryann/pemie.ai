@@ -25,6 +25,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { formatNarrative } from "@pemie/shared";
 import { api, analyticsFailureReason, ApiError, type Board, type Card as CardData, type Column } from "../../lib/api.js";
 import { queryKeys, STALE_TIME } from "../../lib/queryClient.js";
 import { track } from "../../lib/analytics/index.js";
@@ -77,9 +78,13 @@ function announcements(board: Board): Announcements {
 }
 
 function CardBody({ card }: { card: CardData }) {
+  const description = formatNarrative(card.userStory?.narrative) ?? card.description;
   return (
     <>
       <p className="text-body-sm text-ink-900">{card.title}</p>
+      {description && (
+        <p className="mt-1 line-clamp-2 basis-full text-caption text-ink-500">{description}</p>
+      )}
       <Badge tone="neutral" mono>
         {card.type}
       </Badge>

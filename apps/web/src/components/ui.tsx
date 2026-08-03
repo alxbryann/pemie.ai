@@ -899,6 +899,7 @@ export function SkeletonBoard({ columns = 4 }: { columns?: number }) {
             {Array.from({ length: 3 - (i % 2) }).map((_, j) => (
               <div key={j} className="rounded-sm border border-line-100 bg-surface-0 p-3">
                 <Skeleton className="mb-2 h-3.5 w-full" />
+                <Skeleton className="mb-2 h-3 w-3/4" />
                 <Skeleton className="h-3 w-1/2" />
               </div>
             ))}
