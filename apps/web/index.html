@@ -5,6 +5,27 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ffffff" />
+    <!-- Síncrono e inline a propósito: debe correr antes de pintar cualquier
+         cosa para fijar data-theme sin flash (FOUC) de light->dark. Un script
+         module/async llegaría tarde, después del primer paint. -->
+    <script>
+      (function () {
+        var THEME_KEY = "pemie-theme";
+        var DARK_BG = "#0b1220";
+        var LIGHT_BG = "#ffffff";
+        try {
+          var stored = localStorage.getItem(THEME_KEY);
+          var pref = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var resolved = pref === "system" ? (prefersDark ? "dark" : "light") : pref;
+          document.documentElement.setAttribute("data-theme", resolved);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", resolved === "dark" ? DARK_BG : LIGHT_BG);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
     <meta name="description" content="Tu agente, ascendido a project manager." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

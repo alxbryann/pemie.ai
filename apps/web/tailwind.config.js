@@ -38,7 +38,9 @@ export default {
           300: "var(--blue-300)",
           100: "var(--blue-100)",
         },
-        green: { 600: "var(--green-600)", 100: "var(--green-100)" },
+        // `green-700` expone el token --text-success: el verde legible para texto de
+        // éxito sobre superficies claras (el 600 es el acento/swatch, no está pensado para texto).
+        green: { 700: "var(--text-success)", 600: "var(--green-600)", 100: "var(--green-100)" },
         // `amber-700` expone el token --text-warning: el ámbar legible para texto de
         // aviso sobre superficies claras (el 600 es el acento/swatch, no está pensado para texto).
         amber: { 700: "var(--text-warning)", 600: "var(--amber-600)", 100: "var(--amber-100)" },

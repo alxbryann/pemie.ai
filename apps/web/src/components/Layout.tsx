@@ -3,9 +3,16 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../lib/auth.js";
-import { LogoMark, Notice, Wordmark } from "./ui.js";
+import { useTheme, type ThemePreference } from "../lib/theme.js";
+import { LogoMark, Notice, ToggleChip, Wordmark } from "./ui.js";
 
 const ANALYTICS_NOTICE_DISMISSED_KEY = "pemie_analytics_notice_dismissed";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "light", label: "Claro" },
+  { value: "dark", label: "Oscuro" },
+  { value: "system", label: "Sistema" },
+];
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -69,6 +76,7 @@ function AccountMenu({
 }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const { preference, setPreference } = useTheme();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -118,24 +126,40 @@ function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+8px)] w-44 overflow-hidden rounded-md border border-line-200 bg-surface-0 py-1.5 shadow-md"
+          className="absolute right-0 top-[calc(100%+8px)] w-64 overflow-hidden rounded-md border border-line-200 bg-surface-0 py-1.5 shadow-md"
         >
-          <Link
-            role="menuitem"
-            to="/settings"
-            onClick={() => setOpen(false)}
-            className="block px-3.5 py-2 text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
-          >
-            Ajustes
-          </Link>
-          <button
-            role="menuitem"
-            type="button"
-            onClick={handleLogout}
-            className="block w-full px-3.5 py-2 text-left text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
-          >
-            Salir
-          </button>
+          <div className="px-3.5 py-2">
+            <span className="eyebrow mb-1.5 block">Tema</span>
+            <div className="flex flex-wrap gap-1.5">
+              {THEME_OPTIONS.map((option) => (
+                <ToggleChip
+                  key={option.value}
+                  checked={preference === option.value}
+                  onChange={() => setPreference(option.value)}
+                >
+                  {option.label}
+                </ToggleChip>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-line-100 pt-1.5">
+            <Link
+              role="menuitem"
+              to="/settings"
+              onClick={() => setOpen(false)}
+              className="block px-3.5 py-2 text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
+            >
+              Ajustes
+            </Link>
+            <button
+              role="menuitem"
+              type="button"
+              onClick={handleLogout}
+              className="block w-full px-3.5 py-2 text-left text-body-sm text-ink-800 transition-colors hover:bg-surface-50"
+            >
+              Salir
+            </button>
+          </div>
         </div>
       )}
     </div>

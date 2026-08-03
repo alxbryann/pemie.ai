@@ -76,3 +76,78 @@
   --accent-on-ink:     var(--blue-500);
   --code-string:       #7fd1a8; /* strings en bloques de código sobre ink */
 }
+
+/* ---- Dark mode ----
+   Mismas variables, segundo set de valores. Ningún componente cambia:
+   los utilities de Tailwind ya apuntan a estas vars, así que redefinirlas
+   alcanza. El bloque "on-ink" queda afuera a propósito: esas superficies
+   (hero, panel MCP) son oscuras siempre, en ambos temas. */
+:root[data-theme="dark"] {
+  /* ---- Neutrals (cool ink, invertidos: 900 pasa a ser el más claro) ---- */
+  --ink-900: #eef1f8; /* primary text / casi blanco frío */
+  --ink-800: #c9d0e3;
+  --ink-700: #a7b0c9;
+  --ink-600: #8993b3; /* secondary text */
+  --ink-500: #6e7897;
+  --ink-400: #7986a6; /* muted / placeholder */
+  --ink-300: #46527a;
+
+  /* ---- Surfaces (navy casi negro) ---- */
+  --surface-0:   #0b1220; /* page / card */
+  --surface-50:  #10192b; /* subtle raised / section */
+  --surface-100: #17223a; /* sunken / hover fill */
+
+  /* ---- Lines ---- */
+  --line-200: #29334c; /* default border */
+  --line-100: #1c2337; /* hairline / divider */
+
+  /* ---- Brand blue (aclarado para legibilidad sobre superficies oscuras) ---- */
+  --blue-700: #6280f7; /* pressed / hover: en oscuro se aclara, no se oscurece */
+  --blue-600: #4a68f0; /* primary accent */
+  --blue-500: #7c94ff;
+  --blue-300: #a3b7ff; /* soft */
+  --blue-100: #10163a; /* tint background */
+
+  /* ---- Semantic ---- */
+  --green-600: #22c98a; /* success */
+  --green-100: #102a20;
+  --amber-600: #e0a83a; /* warning */
+  --amber-100: #2a2110;
+  --red-600:   #ff6b70; /* danger */
+  --red-100:   #2a1418;
+
+  /* ============ Semantic aliases ============ */
+  --text-primary:   var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-muted:     var(--ink-400);
+  --text-onaccent:  #ffffff;
+  --text-link:      var(--blue-600);
+
+  --bg-page:    var(--surface-0);
+  --bg-subtle:  var(--surface-50);
+  --bg-sunken:  var(--surface-100);
+  --surface-card: var(--surface-0);
+
+  --border-default: var(--line-200);
+  --border-hairline: var(--line-100);
+  --border-strong:  var(--ink-300);
+
+  --accent:        var(--blue-600);
+  --accent-hover:  var(--blue-700);
+  --accent-soft:   var(--blue-300);
+  --accent-tint:   var(--blue-100);
+  --focus-ring:    var(--blue-300);
+  --text-success: #3ddb9a; /* más claro que --green-600: necesita más brillo como texto sobre fondo oscuro */
+  --text-danger: #ff8087;
+  --text-warning: #f2c14e;
+
+  --success: var(--green-600);
+  --warning: var(--amber-600);
+  --danger:  var(--red-600);
+
+  /* El halo de foco usa el color de página como "offset" entre el borde del
+     control y el anillo azul: en light ese offset es blanco (#fff, hardcodeado
+     en spacing.css); en dark tiene que ser el fondo oscuro o el foco se ve con
+     un halo blanco quemado sobre las cards. */
+  --shadow-focus: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--blue-600);
+}

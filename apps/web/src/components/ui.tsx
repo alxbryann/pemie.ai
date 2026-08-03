@@ -273,9 +273,9 @@ export type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger";
 const BADGE_TONES: Record<BadgeTone, { chip: string; dot: string }> = {
   neutral: { chip: "bg-surface-100 text-ink-700", dot: "bg-ink-400" },
   brand: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-600" },
-  success: { chip: "bg-green-100 text-[#0d7a51]", dot: "bg-green-600" },
+  success: { chip: "bg-green-100 text-green-700", dot: "bg-green-600" },
   warning: { chip: "bg-amber-100 text-amber-700", dot: "bg-amber-600" },
-  danger: { chip: "bg-red-100 text-[#b8353a]", dot: "bg-red-600" },
+  danger: { chip: "bg-red-100 text-red-700", dot: "bg-red-600" },
 };
 
 export function Badge({
