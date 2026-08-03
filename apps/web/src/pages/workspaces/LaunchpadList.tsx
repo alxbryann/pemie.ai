@@ -42,6 +42,7 @@ export function LaunchpadList({
       </div>
 
       <div className="relative flex flex-col gap-3.5">
+        <Eyebrow className="mb-1 block">Tus workspaces</Eyebrow>
         {workspaces.map((ws, i) => (
           <WorkspaceRow
             key={ws.id}

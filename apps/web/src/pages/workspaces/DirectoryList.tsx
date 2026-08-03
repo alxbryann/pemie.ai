@@ -78,6 +78,8 @@ export function DirectoryList({
         </Button>
       </div>
 
+      <Eyebrow className="mb-3 block">Tus workspaces</Eyebrow>
+
       {creating && (
         <Card className="mb-8">
           <form onSubmit={onCreate} className="flex items-end gap-3">
