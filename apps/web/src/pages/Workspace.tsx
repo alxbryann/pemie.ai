@@ -767,7 +767,7 @@ function TeamSection({
       {canManage && (lastInvite || invitations.length > 0) ? (
         <Card className="mt-4">
           {lastInvite ? (
-            <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="rounded-md border border-blue-600 bg-blue-100 p-3">
               <p className="text-body-sm text-ink-700">
                 {lastInvite.emailDelivered
                   ? `Invitación enviada por correo a ${lastInvite.email}.`
@@ -1004,7 +1004,7 @@ function AddTeamModal({
             <button
               type="button"
               onClick={() => setMode("person")}
-              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-50 focus-visible:outline-none focus-visible:shadow-focus"
+              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-100 focus-visible:outline-none focus-visible:shadow-focus"
             >
               <span className="text-body font-semibold text-ink-900">Persona</span>
               <span className="mt-1 block text-body-sm text-ink-500">Invítala por correo; acepta cuando quiera.</span>
@@ -1012,7 +1012,7 @@ function AddTeamModal({
             <button
               type="button"
               onClick={() => setMode("agent")}
-              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-50 focus-visible:outline-none focus-visible:shadow-focus"
+              className="rounded-lg border border-line-200 bg-surface-0 p-4 text-left transition-colors hover:border-blue-600 hover:bg-blue-100 focus-visible:outline-none focus-visible:shadow-focus"
             >
               <span className="text-body font-semibold text-ink-900">Agente</span>
               <span className="mt-1 block text-body-sm text-ink-500">Vive en un proyecto y recibe una API key.</span>

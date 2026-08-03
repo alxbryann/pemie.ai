@@ -223,16 +223,20 @@ export const Card = forwardRef<
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
-  return <p className="text-body-sm text-[#b8353a]">{children}</p>;
+  return <p className="text-body-sm text-red-700">{children}</p>;
 }
 
 export type NoticeTone = "success" | "warning" | "danger" | "info";
 
+// Shades -50/-200 no están en la escala del proyecto (solo -100/-600/-700):
+// como "blue"/"green"/"red"/"amber" son nombres de color que Tailwind ya trae
+// de stock, esas shades existían igual pero apuntaban al hex fijo de Tailwind,
+// no al token — por eso no se adaptaban a dark mode.
 const NOTICE_TONES: Record<NoticeTone, string> = {
-  success: "border-green-200 bg-green-50 text-[#0d7a51]",
-  warning: "border-amber-200 bg-amber-50 text-amber-700",
-  danger: "border-red-200 bg-red-50 text-[#b8353a]",
-  info: "border-blue-200 bg-blue-50 text-blue-700",
+  success: "border-green-600 bg-green-100 text-green-700",
+  warning: "border-amber-600 bg-amber-100 text-amber-700",
+  danger: "border-red-600 bg-red-100 text-red-700",
+  info: "border-blue-600 bg-blue-100 text-blue-700",
 };
 
 /**
@@ -394,32 +398,35 @@ export function CodeBlock({
   }
 
   return (
+    // Ventana de terminal: siempre oscura por diseño (tokens on-ink, ver colors.css),
+    // sin importar el tema activo. Con ink-900/ink-800 se invertía en dark mode y el
+    // texto quedaba casi blanco sobre un fondo que también pasaba a casi blanco.
     <div
-      className={`overflow-hidden rounded-md border border-ink-800 bg-ink-900 font-mono ${className}`}
+      className={`overflow-hidden rounded-md border border-line-onink bg-surface-ink font-mono ${className}`}
     >
-      <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2.5">
+      <div className="flex items-center gap-2 border-b border-line-onink px-3.5 py-2.5">
         <span className="h-2.5 w-2.5 rounded-pill bg-[#ff5f57]" />
         <span className="h-2.5 w-2.5 rounded-pill bg-[#febc2e]" />
         <span className="h-2.5 w-2.5 rounded-pill bg-[#28c840]" />
-        <span className="ml-1.5 text-mono-label text-ink-300">{title}</span>
+        <span className="ml-1.5 text-mono-label text-on-ink-muted">{title}</span>
         {copyable && text ? (
           <button
             type="button"
             onClick={copy}
             aria-label={`Copiar ${title}`}
             className={`ml-auto text-mono-label transition-colors ${
-              copied ? "text-blue-300" : "text-ink-300 hover:text-white"
+              copied ? "text-accent-onink" : "text-on-ink-muted hover:text-on-ink"
             }`}
           >
             {copied ? "copied" : "copy"}
           </button>
         ) : null}
       </div>
-      <pre className="overflow-x-auto px-4 py-3.5 text-body-sm leading-relaxed text-[#e6ebff]">
+      <pre className="overflow-x-auto px-4 py-3.5 text-body-sm leading-relaxed text-on-ink-code">
         <code>
           {command ? (
             <>
-              <span className="select-none text-blue-300">$ </span>
+              <span className="select-none text-accent-onink">$ </span>
               {command}
             </>
           ) : (

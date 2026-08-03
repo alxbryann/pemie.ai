@@ -237,7 +237,7 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
                     </Select>
                     <button
                       type="button"
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-400 transition-colors hover:bg-red-100 hover:text-red-600"
                       aria-label={`Eliminar ${s.key} — ${s.title}`}
                       onClick={() => setPendingDelete(s)}
                     >
