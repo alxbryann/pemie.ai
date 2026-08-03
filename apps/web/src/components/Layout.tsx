@@ -3,13 +3,18 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../lib/auth.js";
-import { useTheme } from "../lib/theme.js";
+import { useTheme, type Theme } from "../lib/theme.js";
 import { LogoMark, MoonIcon, Notice, SunIcon, Wordmark } from "./ui.js";
 
 const ANALYTICS_NOTICE_DISMISSED_KEY = "pemie_analytics_notice_dismissed";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  // A nivel del shell (no adentro de `{user && ...}`): así se monta/desmonta
+  // junto con el layout autenticado entero, sin parpadear con el loading de
+  // sesión, y su cleanup suelta data-theme si se navega a una ruta pública
+  // sin recarga completa (ver theme.ts).
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-50">
@@ -22,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </Link>
           {user && (
             <div className="ml-auto flex items-center gap-2">
-              <ThemeToggle />
+              <ThemeToggle theme={theme} onToggle={toggleTheme} />
               <AccountMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} />
             </div>
           )}
@@ -35,14 +40,13 @@ export function Layout({ children }: { children: ReactNode }) {
 }
 
 /** Botón de ícono visible en el header: alterna claro/oscuro directo, sin submenú. */
-function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme();
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
   const isDark = theme === "dark";
 
   return (
     <button
       type="button"
-      onClick={toggleTheme}
+      onClick={onToggle}
       aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
       className="grid h-8 w-8 place-items-center rounded-pill text-ink-600 transition-colors hover:bg-surface-100 hover:text-ink-800 focus-visible:outline-none focus-visible:shadow-focus"
     >

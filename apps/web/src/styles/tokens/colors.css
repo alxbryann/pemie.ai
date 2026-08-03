@@ -65,8 +65,11 @@
   --warning: var(--amber-600);
   --danger:  var(--red-600);
 
-  /* ============ On-ink (superficies oscuras: hero terminal, secciones invertidas) ============ */
-  --surface-ink:      var(--ink-900);
+  /* ============ On-ink (superficies oscuras: hero terminal, secciones invertidas) ============
+     Valores fijos, NO alias de --ink-900/--blue-500: esos tokens invierten con el
+     tema, y un alias los arrastraría, rompiendo la superficie "siempre oscura"
+     justo en dark mode (le pasó a --surface-ink, ver historial). */
+  --surface-ink:      #0c1633;
   --surface-ink-deep: #0a1229; /* paneles anidados sobre --surface-ink, p.ej. bloque mcp.json */
   --line-onink:       rgba(255,255,255,0.10);
 
@@ -74,7 +77,7 @@
   --text-on-ink-soft:  #aab7d9; /* cuerpo secundario sobre ink */
   --text-on-ink-muted: #8b9bc4; /* labels/eyebrows sobre ink */
   --text-on-ink-code:  #c9d4ee; /* salida de terminal */
-  --accent-on-ink:     var(--blue-500);
+  --accent-on-ink:     #5b7cff;
   --code-string:       #7fd1a8; /* strings en bloques de código sobre ink */
 }
 

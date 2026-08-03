@@ -14,11 +14,24 @@
         var DARK_BG = "#0b1220";
         var LIGHT_BG = "#ffffff";
         try {
-          var stored = localStorage.getItem(THEME_KEY);
-          // Sin preferencia guardada todavía (primera visita): arranca según
-          // el SO. No es una opción elegible en la UI, solo el default inicial.
-          var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var resolved = stored === "light" || stored === "dark" ? stored : (prefersDark ? "dark" : "light");
+          var path = window.location.pathname;
+          // Enumeramos las rutas PROTEGIDAS (envueltas en <Protected> en App.tsx),
+          // no las públicas: así cualquier ruta desconocida (typo, bookmark viejo)
+          // cae del lado seguro (claro), que es también donde el catch-all de
+          // React Router termina redirigiendo. Landing/login/registro/invitación
+          // tienen diseño propio fijo y no siguen la preferencia del usuario
+          // logueado (Layout.tsx la aplica solo dentro del shell autenticado).
+          var isProtectedRoute = path === "/app" || path === "/settings" || path.indexOf("/w/") === 0;
+          var resolved;
+          if (!isProtectedRoute) {
+            resolved = "light";
+          } else {
+            var stored = localStorage.getItem(THEME_KEY);
+            // Sin preferencia guardada todavía (primera visita): arranca según
+            // el SO. No es una opción elegible en la UI, solo el default inicial.
+            var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            resolved = stored === "light" || stored === "dark" ? stored : (prefersDark ? "dark" : "light");
+          }
           document.documentElement.setAttribute("data-theme", resolved);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute("content", resolved === "dark" ? DARK_BG : LIGHT_BG);

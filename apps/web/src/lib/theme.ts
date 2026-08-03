@@ -1,9 +1,8 @@
-// Tema claro/oscuro. Sin Context/Provider: el estado real vive en el atributo
-// data-theme de <html> (ya seteado por el script inline de index.html antes
-// del primer paint, para evitar flash) y en localStorage; este hook solo lee
-// y escribe ese estado compartido, no lo duplica.
+// Tema claro/oscuro, con alcance al shell autenticado (lo monta Layout). El
+// estado real vive en el atributo data-theme de <html> y en localStorage; este
+// hook solo lee y escribe ese estado compartido, no lo duplica.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
 
@@ -14,10 +13,14 @@ const THEME_KEY = "pemie-theme";
 const LIGHT_BG = "#ffffff";
 const DARK_BG = "#0b1220";
 
-function readInitialTheme(): Theme {
-  // Lee lo que el bootstrap de index.html ya resolvió y pintó, en vez de
-  // recalcularlo acá: recalcular repetiría el trabajo y podría flashear.
-  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+function resolvePreferredTheme(): Theme {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // seguir al default de abajo
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function applyTheme(theme: Theme) {
@@ -31,8 +34,26 @@ function applyTheme(theme: Theme) {
   }
 }
 
+/**
+ * Landing/login/registro/invitación fijan data-theme="light" en el bootstrap
+ * de index.html (tienen diseño propio, no siguen la preferencia del usuario).
+ * Si se navega ahí sin recarga completa (ej. login exitoso hacia /app), ese
+ * bootstrap no vuelve a correr — por eso al montar recalculamos desde
+ * localStorage/SO en vez de confiar en el atributo que ya esté puesto, y al
+ * desmontar (volver a una ruta pública sin recarga) lo soltamos para no
+ * dejar el tema del usuario filtrado ahí.
+ */
 export function useTheme(): { theme: Theme; toggleTheme: () => void } {
-  const [theme, setTheme] = useState<Theme>(readInitialTheme);
+  const [theme, setTheme] = useState<Theme>(resolvePreferredTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+    return () => {
+      document.documentElement.removeAttribute("data-theme");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", LIGHT_BG);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleTheme() {
     const next: Theme = theme === "dark" ? "light" : "dark";
