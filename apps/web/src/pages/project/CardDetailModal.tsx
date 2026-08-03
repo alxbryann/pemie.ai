@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatNarrative } from "@pemie/shared";
 import {
   api,
   analyticsFailureReason,
@@ -90,7 +91,12 @@ export default function CardDetailModal({
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(card.title);
   const [type, setType] = useState(card.type);
-  const [description, setDescription] = useState(card.description ?? "");
+  // Sin description propia, arranca con la narrativa de la HU vinculada como
+  // punto de partida editable: si la persona la deja tal cual o la retoca y
+  // guarda, queda fijada como description de la tarjeta (deja de seguir a la HU).
+  const [description, setDescription] = useState(
+    card.description ?? formatNarrative(card.userStory?.narrative) ?? ""
+  );
   const [assigneeId, setAssigneeId] = useState(card.assigneeId ?? "");
   const [userStoryId, setUserStoryId] = useState(card.userStoryId ?? "");
   const [columnId, setColumnId] = useState(card.columnId);

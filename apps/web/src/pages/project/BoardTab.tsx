@@ -78,7 +78,10 @@ function announcements(board: Board): Announcements {
 }
 
 function CardBody({ card }: { card: CardData }) {
-  const description = formatNarrative(card.userStory?.narrative) ?? card.description;
+  // Prioriza card.description: es lo que la persona ve y edita en el modal de
+  // detalle (precargado con la narrativa si estaba vacío), así que ya refleja
+  // cualquier ajuste manual. La narrativa es solo el fallback antes de guardar.
+  const description = card.description ?? formatNarrative(card.userStory?.narrative);
   return (
     <>
       <p className="text-body-sm text-ink-900">{card.title}</p>
