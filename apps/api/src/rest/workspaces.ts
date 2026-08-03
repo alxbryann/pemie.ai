@@ -87,7 +87,7 @@ const createStorySchema = z.object({
 });
 const updateStorySchema = z.object({
   title: z.string().min(2).optional(),
-  narrative: narrativeSchema.optional(),
+  narrative: narrativeSchema.nullable().optional(),
   acceptanceCriteria: z.array(acceptanceCriterionSchema).optional(),
   priority: z.enum(["low", "medium", "high", "critical"]).optional(),
   storyPoints: z.number().int().nullable().optional(),

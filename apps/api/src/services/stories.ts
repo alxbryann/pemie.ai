@@ -64,7 +64,7 @@ export interface CreateStoryInput {
 
 export interface UpdateStoryInput {
   title?: string;
-  narrative?: UserStoryNarrative;
+  narrative?: UserStoryNarrative | null;
   acceptanceCriteria?: AcceptanceCriterion[];
   priority?: string;
   storyPoints?: number | null;

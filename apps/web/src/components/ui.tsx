@@ -773,6 +773,26 @@ export function TrashIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function PencilIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M11.05 2.55a1.5 1.5 0 0 1 2.12 0l.28.28a1.5 1.5 0 0 1 0 2.12L5.6 12.8l-3 .8.8-3 7.65-7.65Z" />
+      <path d="M10 3.6 12.4 6" />
+    </svg>
+  );
+}
+
 export function SunIcon({ className = "" }: { className?: string }) {
   return (
     <svg

@@ -38,6 +38,8 @@ export const ANALYTICS_EVENTS = {
   story_created_failed: ["reason"],
   // Nunca el texto de la HU, solo el tránsito de estado.
   story_status_changed: ["from_status", "to_status"],
+  story_updated: [],
+  story_update_failed: ["reason"],
   // `card_deleted` mide si el equipo acepta el default de arrastrar la tarjeta
   // con la HU o lo desmarca: es lo que valida la decisión de PEM-19.
   story_deleted: ["card_deleted"],

@@ -17,9 +17,11 @@ import {
   ErrorText,
   Input,
   Modal,
+  PencilIcon,
   Select,
   TrashIcon,
 } from "../../components/ui.js";
+import StoryDetailModal from "./StoryDetailModal.js";
 
 const STATUSES = ["backlog", "ready", "in_progress", "review", "done"];
 const PRIORITIES = ["low", "medium", "high", "critical"];
@@ -71,6 +73,8 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
   const [role, setRole] = useState("");
   const [want, setWant] = useState("");
   const [benefit, setBenefit] = useState("");
+
+  const [editingStory, setEditingStory] = useState<UserStory | null>(null);
 
   const [pendingDelete, setPendingDelete] = useState<UserStory | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -254,6 +258,14 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
                     </Select>
                     <button
                       type="button"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-400 transition-colors hover:bg-surface-100 hover:text-ink-900"
+                      aria-label={`Editar ${s.key} — ${s.title}`}
+                      onClick={() => setEditingStory(s)}
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
                       className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-ink-400 transition-colors hover:bg-red-100 hover:text-red-600"
                       aria-label={`Eliminar ${s.key} — ${s.title}`}
                       onClick={() => setPendingDelete(s)}
@@ -279,6 +291,20 @@ export default function StoriesTab({ ws, proj }: { ws: string; proj: string }) {
             ))}
           </div>
         </Card>
+      )}
+
+      {editingStory && (
+        <StoryDetailModal
+          story={editingStory}
+          ws={ws}
+          proj={proj}
+          epics={epics}
+          onClose={() => setEditingStory(null)}
+          onSaved={() => {
+            setEditingStory(null);
+            invalidateAfterStoryChange();
+          }}
+        />
       )}
 
       {pendingDelete && (
