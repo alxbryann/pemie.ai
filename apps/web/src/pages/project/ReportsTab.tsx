@@ -126,6 +126,7 @@ export default function ReportsTab({ ws, proj }: { ws: string; proj: string }) {
         <Textarea
           className="mt-3"
           rows={2}
+          autoResize
           value={objText}
           onChange={(e) => setObjText(e.target.value)}
           placeholder="¿Qué persigue este proyecto?"

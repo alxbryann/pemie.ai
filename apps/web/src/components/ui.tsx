@@ -2,7 +2,7 @@
 // Reglas del sistema: radios sm/md/lg, borde hairline, sombra fría, acento azul único,
 // mono (IBM Plex) para etiquetas, comandos y métricas.
 
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -67,9 +67,35 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   }
 );
 
-export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${CONTROL} w-full min-w-0 leading-snug ${className}`} {...props} />;
-}
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    /** Crece con el contenido en vez de scrollear (altura mínima según `rows`). */
+    autoResize?: boolean;
+  }
+>(function Textarea({ className = "", autoResize = false, value, ...props }, ref) {
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!autoResize || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [autoResize, value]);
+
+  return (
+    <textarea
+      ref={(node) => {
+        innerRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      }}
+      value={value}
+      className={`${CONTROL} w-full min-w-0 leading-snug ${autoResize ? "resize-none overflow-hidden" : ""} ${className}`}
+      {...props}
+    />
+  );
+});
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={`${CONTROL} w-full min-w-0 max-w-full ${className}`} {...props} />;
