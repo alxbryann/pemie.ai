@@ -339,6 +339,9 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
       // Un movimiento puede haber entrado o salido de "Hecho": el leaderboard
       // se deriva de eso y quedaría mostrando un ranking viejo si no se avisa.
       queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard(ws, proj) });
+      // La columna define el estado de la HU vinculada: el listado de Historias
+      // mostraría el estado anterior hasta que expire su staleTime.
+      queryClient.invalidateQueries({ queryKey: queryKeys.stories(ws, proj) });
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : "No se pudo mover la tarjeta");
       await resyncBoard();
@@ -356,7 +359,11 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
     if (!prev) return;
     // Si cambió de columna, recargar para respetar orden del servidor.
     const current = prev.columns.flatMap((c) => c.cards).find((c) => c.id === updated.id);
-    if (!current || current.columnId !== updated.columnId) return void resyncBoard();
+    if (!current || current.columnId !== updated.columnId) {
+      // Guardar la tarjeta en otra columna también movió el estado de su HU.
+      queryClient.invalidateQueries({ queryKey: queryKeys.stories(ws, proj) });
+      return void resyncBoard();
+    }
     commitBoard({
       ...prev,
       columns: prev.columns.map((col) => ({
