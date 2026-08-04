@@ -33,6 +33,11 @@ interface McpContext {
   key: ApiKey;
   /** Proyecto fijado en la key (solo scopeLevel=project). */
   projectId: string | null;
+  /**
+   * Workspace que resolvió `requireProject` en esta llamada, para que el
+   * AuditLog no repita la resolución. Mutable y por llamada: ver `tools/call`.
+   */
+  resolvedWorkspaceId: string | null;
 }
 
 /**
@@ -66,6 +71,7 @@ async function requireProject(ctx: McpContext, args: Record<string, unknown>, sc
   const fromArgs = typeof args.projectId === "string" ? args.projectId : null;
   const { project, workspaceId } = await agents.resolveProjectForKey(ctx.key, fromArgs);
   await agents.authorizeKeyForProject(ctx.key, scope, workspaceId);
+  ctx.resolvedWorkspaceId = workspaceId;
   return project.id;
 }
 
@@ -596,7 +602,7 @@ export async function invokeMcpTool(
   agents.assertKeyUsable(key);
   if (!isToolAvailable(MCP_TOOLS[tool.name].access, key.scopes as ApiScope[]))
     throw forbidden(`La API key no tiene el permiso requerido: ${describeToolAccess(MCP_TOOLS[tool.name].access)}`);
-  const ctx: McpContext = { key, projectId: key.projectId };
+  const ctx: McpContext = { key, projectId: key.projectId, resolvedWorkspaceId: null };
   const result = await tool.handler(ctx, args);
   await auditToolCall(ctx, name, args, typeof args.projectId === "string" ? args.projectId : key.projectId);
   return result;
@@ -749,11 +755,15 @@ async function handleRpc(ctx: McpContext, req: RpcRequest): Promise<object | und
       if (!isToolAvailable(MCP_TOOLS[tool.name].access, ctx.key.scopes as ApiScope[]))
         return rpcError(id, -32000, `La API key no tiene el permiso requerido: ${describeToolAccess(MCP_TOOLS[tool.name].access)}`);
       const args = (req.params?.arguments as Record<string, unknown>) ?? {};
+      // Copia por llamada: un batch JSON-RPC corre sus tools en paralelo sobre
+      // el mismo ctx, y el workspace que resuelve una no puede terminar en el
+      // AuditLog de otra.
+      const callCtx: McpContext = { ...ctx, resolvedWorkspaceId: null };
       try {
-        const result = await tool.handler(ctx, args);
+        const result = await tool.handler(callCtx, args);
         const resolvedPid =
-          typeof args.projectId === "string" ? args.projectId : ctx.projectId;
-        await auditToolCall(ctx, name, args, resolvedPid);
+          typeof args.projectId === "string" ? args.projectId : callCtx.projectId;
+        await auditToolCall(callCtx, name, args, resolvedPid);
         return rpcResult(id, asText(result));
       } catch (err) {
         if (err instanceof ServiceError)
@@ -803,15 +813,11 @@ async function auditToolCall(
   args: Record<string, unknown>,
   projectId: string | null
 ) {
-  let workspaceId = ctx.key.workspaceId;
-  if (projectId) {
-    try {
-      const { workspaceId: ws } = await agents.resolveProjectForKey(ctx.key, projectId);
-      workspaceId = ws;
-    } catch {
-      // best-effort: usa home workspace de la key
-    }
-  }
+  // `requireProject` ya resolvió el workspace en esta misma llamada: reusarlo
+  // ahorra una consulta por tool call (antes se resolvía el proyecto dos veces,
+  // la segunda solo para este log). Sin resolución previa —tools que no tocan
+  // proyecto, o que fallaron antes de llegar— cae al workspace de la key.
+  const workspaceId = ctx.resolvedWorkspaceId ?? ctx.key.workspaceId;
   return agents.audit({
     workspaceId,
     actorType: "agent",
@@ -856,7 +862,7 @@ export function mcpRoutes(): Hono<AppEnv> {
 
     const body = (await c.req.json().catch(() => null)) as RpcRequest | RpcRequest[] | null;
     if (!body) return c.json(rpcError(null, -32700, "Parse error"), 400);
-    const ctx: McpContext = { key, projectId: key.projectId };
+    const ctx: McpContext = { key, projectId: key.projectId, resolvedWorkspaceId: null };
 
     if (Array.isArray(body)) {
       const results = await Promise.all(body.map((r) => safeHandle(ctx, r)));

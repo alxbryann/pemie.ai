@@ -42,6 +42,66 @@ export type ApiScope = (typeof API_SCOPES)[number];
 export const API_KEY_SCOPE_LEVELS = ["project", "workspace", "user"] as const;
 export type ApiKeyScopeLevel = (typeof API_KEY_SCOPE_LEVELS)[number];
 
+// ─── Roster de agentes de un workspace ────────────────────────────────
+
+/** Proyecto referenciado desde el roster (lo mínimo para etiquetar una fila). */
+export interface AgentRosterProject {
+  id: string;
+  name: string;
+  slug: string;
+  key: string;
+}
+
+/**
+ * Persona detrás de un agente o de una key. Que exista no implica que siga en
+ * el equipo: eso se resuelve contra las membresías, no contra este campo.
+ */
+export interface AgentRosterOwner {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+/** Agente con fila propia en un proyecto del workspace. */
+export interface RegisteredAgent<TDate = string> {
+  source: "registered";
+  id: string;
+  name: string;
+  kind: string;
+  projectId: string;
+  project: AgentRosterProject;
+  owner: AgentRosterOwner | null;
+  createdAt: TDate;
+  _count: { apiKeys: number };
+}
+
+/**
+ * API key de alcance amplio vista operando en el workspace. No hay `Agent`
+ * detrás —las keys workspace/user no lo llevan—, así que la identidad que se
+ * muestra es la de la key y su dueño.
+ */
+export interface ObservedAgent<TDate = string> {
+  source: "observed";
+  /** Id de la presencia, no de la key: es lo que se bloquea o desbloquea. */
+  id: string;
+  apiKeyId: string;
+  name: string;
+  scopeLevel: ApiKeyScopeLevel;
+  owner: AgentRosterOwner | null;
+  lastProject: AgentRosterProject | null;
+  firstSeenAt: TDate;
+  lastSeenAt: TDate;
+  blockedAt: TDate | null;
+}
+
+/**
+ * Ítem del roster de Equipo. `TDate` existe porque el backend maneja `Date` y
+ * el cliente recibe el ISO string del JSON: mismo contrato, dos representaciones.
+ */
+export type WorkspaceAgentRosterItem<TDate = string> =
+  | RegisteredAgent<TDate>
+  | ObservedAgent<TDate>;
+
 /** Proveedores LLM BYOK para el canal Telegram. */
 export const CHANNEL_LLM_PROVIDERS = ["anthropic", "openai", "deepseek"] as const;
 export type ChannelLlmProvider = (typeof CHANNEL_LLM_PROVIDERS)[number];

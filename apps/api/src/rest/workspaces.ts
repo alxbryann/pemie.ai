@@ -449,6 +449,22 @@ export function workspaceRoutes() {
     return c.json(await agentsSvc.deleteAgent(user.id, c.req.param("agentId")));
   });
 
+  // Bloquear/desbloquear una key ajena vista operando aquí. No hay DELETE: la
+  // key pertenece a otro workspace y desde este solo se le corta el paso.
+  app.post("/:slug/agents/presence/:presenceId/block", async (c) => {
+    const user = requireUser(c);
+    await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    const presence = await agentsSvc.blockAgentPresence(user.id, c.req.param("presenceId"));
+    return c.json({ presence });
+  });
+
+  app.post("/:slug/agents/presence/:presenceId/unblock", async (c) => {
+    const user = requireUser(c);
+    await tenancy.getWorkspace(user.id, c.req.param("slug"));
+    const presence = await agentsSvc.unblockAgentPresence(user.id, c.req.param("presenceId"));
+    return c.json({ presence });
+  });
+
   // ─── F4: API keys y AuditLog (por workspace, admin+) ───────────────
   app.get("/:slug/api-keys", async (c) => {
     const user = requireUser(c);
