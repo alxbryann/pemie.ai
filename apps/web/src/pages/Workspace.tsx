@@ -384,6 +384,40 @@ function IconTrashButton({ label, onClick }: { label: string; onClick: () => voi
   );
 }
 
+/**
+ * De quién es el agente, al final de la línea de metadatos (PEM-35).
+ *
+ * Tres estados, ninguno accionable: no hay forma de reasignar dueño, así que
+ * esto informa y no pide nada. Por eso va en texto plano y no en badge —los
+ * badges de esta fila señalan cosas que se arreglan desde acá («sin API key»)—
+ * y por eso «sin dueño registrado» no lleva icono ni tono de alerta: es un dato
+ * que no existe, no un problema. Se repite en todos los agentes anteriores a
+ * PEM-35 y tiene que poder ignorarse de un vistazo.
+ *
+ * `ownerIsMember` es una pregunta distinta de `owner != null`: hoy el producto
+ * borra membresías, no usuarios, así que un dueño que se fue del equipo sigue
+ * llegando entero en el payload.
+ */
+function AgentOwnerLabel({
+  owner,
+  ownerIsMember,
+}: {
+  owner: WorkspaceAgent["owner"];
+  ownerIsMember: boolean;
+}) {
+  if (!owner) return <span className="text-caption text-ink-400">sin dueño registrado</span>;
+  const label = owner.name ?? owner.email;
+  return (
+    <span
+      className={`max-w-48 truncate text-caption ${ownerIsMember ? "text-ink-500" : "text-ink-400"}`}
+      title={owner.email}
+    >
+      de {label}
+      {ownerIsMember ? null : " · ya no está en el equipo"}
+    </span>
+  );
+}
+
 function invStatusTone(status: string): BadgeTone {
   if (status === "accepted") return "success";
   if (status === "expired") return "danger";
@@ -670,6 +704,9 @@ function TeamSection({
                     const latestKey = keys
                       .filter((key) => key.agentId === agent.id)
                       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+                    const owner = agent.owner;
+                    const ownerIsMember =
+                      owner !== null && members.some((m) => m.user.id === owner.id);
                     return (
                       <li
                         key={agent.id}
@@ -695,6 +732,7 @@ function TeamSection({
                             <span className="font-mono text-caption text-ink-400">
                               {agent._count.apiKeys} {agent._count.apiKeys === 1 ? "key" : "keys"}
                             </span>
+                            <AgentOwnerLabel owner={owner} ownerIsMember={ownerIsMember} />
                           </div>
                         </div>
                         {canManage ? (
