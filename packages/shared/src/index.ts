@@ -21,6 +21,28 @@ export type UserStoryStatus =
   | "review"
   | "done";
 
+/**
+ * Columna del tablero Kanban (por su `order`) que corresponde a cada estado de HU.
+ * Espejo exacto de DEFAULT_COLUMNS en apps/api/src/services/board.ts: las columnas
+ * no son editables, así que el mapeo puede ser estático — pero ambos lados deben
+ * cambiar juntos si algún día se agrega o reordena un estado.
+ */
+export const STATUS_COLUMN_ORDER: Record<UserStoryStatus, number> = {
+  backlog: 0,
+  ready: 1,
+  in_progress: 2,
+  review: 3,
+  done: 4,
+};
+
+/** Estado de HU que implica un `order` de columna, o null si ninguno lo usa. */
+export function statusForColumnOrder(order: number): UserStoryStatus | null {
+  const entry = (Object.entries(STATUS_COLUMN_ORDER) as [UserStoryStatus, number][]).find(
+    ([, columnOrder]) => columnOrder === order
+  );
+  return entry ? entry[0] : null;
+}
+
 /** Scopes de API key para agentes (MCP + REST de agente). */
 export const API_SCOPES = [
   "commits:read",
