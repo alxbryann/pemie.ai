@@ -456,20 +456,25 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Nueva tarjeta */}
       <Card>
-        <form onSubmit={addCard} className="flex flex-wrap items-end gap-2">
-          <Input
-            placeholder="Nueva tarjeta…"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="max-w-sm"
-            aria-label="Nueva tarjeta"
-          />
-          <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de tarjeta">
-            <option value="task">task</option>
-            <option value="story">story</option>
-            <option value="bug">bug</option>
-          </Select>
-          <Button type="submit">Añadir a {board.columns[0]?.name}</Button>
+        <form onSubmit={addCard} className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1 sm:max-w-sm">
+            <Input
+              placeholder="Nueva tarjeta…"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              aria-label="Nueva tarjeta"
+            />
+          </div>
+          <div className="w-32 shrink-0">
+            <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de tarjeta">
+              <option value="task">task</option>
+              <option value="story">story</option>
+              <option value="bug">bug</option>
+            </Select>
+          </div>
+          <Button type="submit" className="shrink-0">
+            Añadir a {board.columns[0]?.name}
+          </Button>
         </form>
       </Card>
 
