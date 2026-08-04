@@ -51,10 +51,21 @@ export async function createAgent(
   name: string,
   kind = "mcp"
 ) {
-  await projectWithAccess(userId, projectId, "member");
+  const project = await projectWithAccess(userId, projectId, "member");
   const trimmed = name.trim();
   if (trimmed.length < 2) throw badRequest("El nombre del agente es muy corto", "invalid_name");
-  return prisma.agent.create({ data: { projectId, name: trimmed, kind } });
+  const agent = await prisma.agent.create({
+    data: { projectId, name: trimmed, kind, ownerId: userId },
+  });
+  await audit({
+    workspaceId: project.workspaceId,
+    actorType: "user",
+    actorId: userId,
+    action: "agent.create",
+    entity: "Agent",
+    entityId: agent.id,
+  });
+  return agent;
 }
 
 /** Lista los agentes de un proyecto (viewer+). */
@@ -81,6 +92,7 @@ export async function listAgentsInWorkspace(userId: string, workspaceId: string)
     include: {
       _count: { select: { apiKeys: true } },
       project: { select: { id: true, name: true, slug: true, key: true } },
+      owner: { select: { id: true, name: true, email: true } },
     },
   });
 }

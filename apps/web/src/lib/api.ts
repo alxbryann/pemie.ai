@@ -289,6 +289,12 @@ export interface Agent {
 export interface WorkspaceAgent extends Agent {
   projectId: string;
   project: { id: string; name: string; slug: string; key: string };
+  /**
+   * Quién creó el agente. Null en los anteriores a PEM-35, que no se pueden
+   * rellenar. Que exista no implica que siga en el equipo: eso se resuelve
+   * contra `members`, no contra este campo.
+   */
+  owner: { id: string; name: string | null; email: string } | null;
 }
 export interface ApiKeyPublic {
   id: string;

@@ -36,6 +36,7 @@ model User {
   objectives  ObjectiveHistory[]
   contributor Contributor[]
   apiKeys     ApiKey[]            @relation("ApiKeyOwner")
+  ownedAgents Agent[]             @relation("AgentOwner")
   channelLinks ChannelLink[]
   channelConfig UserChannelConfig?
   channelLinkTokens ChannelLinkToken[]
@@ -392,8 +393,13 @@ model Agent {
   projectId String
   name      String
   kind      String   @default("mcp")
+  /// Persona que creó el agente. Null en los agentes anteriores a PEM-35: no
+  /// hay de dónde deducirlo, createAgent no auditaba. No indica pertenencia
+  /// al equipo — el dueño puede seguir existiendo sin membresía.
+  ownerId   String?
   createdAt DateTime @default(now())
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner     User?    @relation("AgentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   apiKeys   ApiKey[]
   reports   Report[]
 
