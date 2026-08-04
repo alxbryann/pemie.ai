@@ -15,6 +15,8 @@ import {
   type Member,
   type Invitation,
   type WorkspaceAgent,
+  type RegisteredWorkspaceAgent,
+  type ObservedWorkspaceAgent,
   type ApiKeyPublic,
 } from "../lib/api.js";
 import { track } from "../lib/analytics/index.js";
@@ -447,10 +449,15 @@ function TeamSection({
   const [agentBusyId, setAgentBusyId] = useState<string | null>(null);
   const [agentConfirmId, setAgentConfirmId] = useState<string | null>(null);
   const [agentErrors, setAgentErrors] = useState<Record<string, string>>({});
+  const [presenceBusyId, setPresenceBusyId] = useState<string | null>(null);
+  const [presenceConfirmId, setPresenceConfirmId] = useState<string | null>(null);
+  const [presenceErrors, setPresenceErrors] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("choose");
-  const [regenerateAgent, setRegenerateAgent] = useState<WorkspaceAgent | undefined>();
-  const [connection, setConnection] = useState<{ agent: WorkspaceAgent; key: ApiKeyPublic } | null>(null);
+  // Regenerar key y ver la conexión solo aplican a agentes registrados: una
+  // presencia observada no tiene agente al que colgarle una key nueva.
+  const [regenerateAgent, setRegenerateAgent] = useState<RegisteredWorkspaceAgent | undefined>();
+  const [connection, setConnection] = useState<{ agent: RegisteredWorkspaceAgent; key: ApiKeyPublic } | null>(null);
   const [teamLoad, setTeamLoad] = useState<{ status: "loading" } | { status: "ready" } | { status: "error"; message: string }>({ status: "loading" });
 
   function openAdd(mode: AddMode) {
@@ -572,6 +579,38 @@ function TeamSection({
       }));
     } finally {
       setAgentBusyId(null);
+    }
+  }
+
+  // El bloqueo no borra nada: la key vive en otro workspace y solo deja de
+  // operar en éste. Por eso se recarga la lista en vez de quitar la fila —el
+  // agente sigue en el roster, ahora marcado como bloqueado.
+  async function onTogglePresenceBlock(agent: ObservedWorkspaceAgent) {
+    const blocked = agent.blockedAt !== null;
+    setPresenceBusyId(agent.id);
+    setPresenceErrors((prev) => ({ ...prev, [agent.id]: "" }));
+    try {
+      if (blocked) await api.agents.unblockPresence(slug, agent.id);
+      else await api.agents.blockPresence(slug, agent.id);
+      track(blocked ? "agent_presence_unblocked" : "agent_presence_blocked", {
+        scope_level: agent.scopeLevel,
+      });
+      setPresenceConfirmId(null);
+      await load();
+    } catch (err) {
+      track(blocked ? "agent_presence_unblocked_failed" : "agent_presence_blocked_failed", {
+        reason: analyticsFailureReason(err),
+      });
+      setPresenceErrors((prev) => ({
+        ...prev,
+        [agent.id]: err instanceof ApiError
+          ? err.message
+          : blocked
+            ? "No se pudo desbloquear el agente"
+            : "No se pudo bloquear el agente",
+      }));
+    } finally {
+      setPresenceBusyId(null);
     }
   }
 
@@ -697,10 +736,100 @@ function TeamSection({
             <div>
               <h3 className="mb-2 text-body-sm font-semibold text-ink-600">Agentes</h3>
               {agents.length === 0 ? (
-                <p className="text-body-sm text-ink-400">Todavía no hay agentes registrados.</p>
+                <p className="text-body-sm text-ink-400">Todavía no hay agentes trabajando aquí.</p>
               ) : (
                 <ul className="divide-y divide-line-100">
                   {agents.map((agent) => {
+                    // Presencia observada: una key de alcance amplio a la que se
+                    // vio operar aquí sin estar registrada en este workspace. No
+                    // hay agente detrás, así que no hay key que regenerar ni
+                    // agente que borrar; solo cortarle el paso.
+                    if (agent.source === "observed") {
+                      const blocked = agent.blockedAt !== null;
+                      const presenceBusy = presenceBusyId === agent.id;
+                      const observedOwner = agent.owner;
+                      const observedOwnerIsMember =
+                        observedOwner !== null && members.some((m) => m.user.id === observedOwner.id);
+                      return (
+                        <li
+                          key={`observed:${agent.id}`}
+                          className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
+                        >
+                          <div className="grid h-8 w-8 flex-none place-items-center rounded-md bg-surface-100 text-caption font-semibold text-ink-700">
+                            {agent.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`truncate text-body-sm font-medium ${blocked ? "text-ink-400" : "text-ink-900"}`}
+                            >
+                              {agent.name}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <Badge tone="warning" mono>observado</Badge>
+                              <Badge tone="neutral" mono>{agent.scopeLevel}</Badge>
+                              {blocked ? <Badge tone="danger" dot>bloqueado</Badge> : null}
+                              <AgentOwnerLabel
+                                owner={observedOwner}
+                                ownerIsMember={observedOwnerIsMember}
+                              />
+                              <span className="text-caption text-ink-400">
+                                {agent.lastProject
+                                  ? `visto en ${agent.lastProject.name}`
+                                  : "sin proyecto registrado"}{" "}
+                                · {new Date(agent.lastSeenAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          {canManage ? (
+                            <div className="flex flex-none flex-col items-end gap-1">
+                              {presenceConfirmId === agent.id ? (
+                                <>
+                                  <p className="text-caption text-ink-500">
+                                    {blocked
+                                      ? "Volverá a operar en este workspace."
+                                      : "Dejará de operar aquí. Su key sigue viva en su propio workspace."}
+                                  </p>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant={blocked ? "primary" : "danger"}
+                                      size="sm"
+                                      disabled={presenceBusy}
+                                      onClick={() => onTogglePresenceBlock(agent)}
+                                    >
+                                      {presenceBusy
+                                        ? blocked
+                                          ? "Desbloqueando…"
+                                          : "Bloqueando…"
+                                        : "Confirmar"}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled={presenceBusy}
+                                      onClick={() => setPresenceConfirmId(null)}
+                                    >
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setPresenceConfirmId(agent.id)}
+                                >
+                                  {blocked ? "Desbloquear" : "Bloquear"}
+                                </Button>
+                              )}
+                              {presenceErrors[agent.id] ? (
+                                <ErrorText>{presenceErrors[agent.id]}</ErrorText>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    }
+
                     const latestKey = keys
                       .filter((key) => key.agentId === agent.id)
                       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -709,7 +838,7 @@ function TeamSection({
                       owner !== null && members.some((m) => m.user.id === owner.id);
                     return (
                       <li
-                        key={agent.id}
+                        key={`registered:${agent.id}`}
                         className="-mx-6 flex items-center gap-3 px-6 py-2.5 first:pt-0 last:pb-0 hover:bg-surface-50"
                       >
                         <div className="grid h-8 w-8 flex-none place-items-center rounded-md bg-blue-100 text-caption font-semibold text-blue-700">
@@ -718,6 +847,7 @@ function TeamSection({
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-body-sm font-medium text-ink-900">{agent.name}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <Badge tone="success" mono>registrado</Badge>
                             <Badge tone="neutral" mono>{agent.project.slug}</Badge>
                             {canManage ? (
                               latestKey ? (
@@ -914,7 +1044,7 @@ function AddTeamModal({
   onClose: () => void;
   onInvite: (email: string) => Promise<Invitation>;
   onChanged: () => Promise<void>;
-  existingAgent?: WorkspaceAgent;
+  existingAgent?: RegisteredWorkspaceAgent;
 }) {
   const [mode, setMode] = useState<AddMode>(initialMode);
   const [email, setEmail] = useState("");

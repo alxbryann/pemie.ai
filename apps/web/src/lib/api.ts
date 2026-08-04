@@ -1,7 +1,14 @@
 // Cliente HTTP del backend pemie-api. El frontend es puro cliente: toda la
 // lógica de negocio vive en el backend. Aquí solo hay transporte + tipos.
 
-import type { DomainConfig, Role, UserStoryNarrative } from "@pemie/shared";
+import type {
+  DomainConfig,
+  ObservedAgent,
+  RegisteredAgent,
+  Role,
+  UserStoryNarrative,
+  WorkspaceAgentRosterItem,
+} from "@pemie/shared";
 
 // En producción el front y el API comparten dominio (el API corre como función
 // de Vercel bajo /api), así que la base es relativa: la cookie de sesión es
@@ -285,16 +292,27 @@ export interface Agent {
   _count: { apiKeys: number };
 }
 
-/** Agente con proyecto (listado a nivel workspace). */
-export interface WorkspaceAgent extends Agent {
-  projectId: string;
-  project: { id: string; name: string; slug: string; key: string };
-  /**
-   * Quién creó el agente. Null en los anteriores a PEM-35, que no se pueden
-   * rellenar. Que exista no implica que siga en el equipo: eso se resuelve
-   * contra `members`, no contra este campo.
-   */
-  owner: { id: string; name: string | null; email: string } | null;
+/**
+ * Fila del roster de Equipo. Unión discriminada por `source`: `registered` es el
+ * agente con fila propia de siempre; `observed` es una key de alcance amplio a
+ * la que se vio operar en este workspace sin estar registrada en él.
+ *
+ * Los tipos viven en `@pemie/shared` porque el backend arma exactamente este
+ * payload; aquí solo se les fija la representación de fechas del JSON (string).
+ */
+export type WorkspaceAgent = WorkspaceAgentRosterItem;
+export type RegisteredWorkspaceAgent = RegisteredAgent;
+export type ObservedWorkspaceAgent = ObservedAgent;
+
+/** Presencia devuelta al bloquear/desbloquear (la lista se recarga aparte). */
+export interface AgentPresence {
+  id: string;
+  apiKeyId: string;
+  workspaceId: string;
+  blockedAt: string | null;
+  blockedById: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
 }
 export interface ApiKeyPublic {
   id: string;
@@ -537,6 +555,18 @@ export const api = {
       post<{ agent: Agent }>(`${pp(w, p)}/agents`, { name }),
     remove: (w: string, agentId: string) =>
       del<{ ok: true }>(`/api/workspaces/${w}/agents/${agentId}`),
+    // Sobre presencias, no sobre agentes: la key es de otro workspace y desde
+    // aquí solo se le corta (o se le devuelve) el paso.
+    blockPresence: (w: string, presenceId: string) =>
+      post<{ presence: AgentPresence }>(
+        `/api/workspaces/${w}/agents/presence/${presenceId}/block`,
+        {}
+      ),
+    unblockPresence: (w: string, presenceId: string) =>
+      post<{ presence: AgentPresence }>(
+        `/api/workspaces/${w}/agents/presence/${presenceId}/unblock`,
+        {}
+      ),
   },
   apiKeys: {
     list: (w: string) => get<{ apiKeys: ApiKeyPublic[] }>(`/api/workspaces/${w}/api-keys`),
