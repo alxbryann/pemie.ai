@@ -11,9 +11,11 @@ import * as agentsSvc from "../services/agents.js";
 import * as stories from "../services/stories.js";
 import * as board from "../services/board.js";
 import * as leaderboard from "../services/leaderboard.js";
+import * as searchSvc from "../services/search.js";
 import { badRequest } from "../services/errors.js";
 import { listInstallationRepos } from "../lib/github-app.js";
 import { type AppContext, type AppEnv, requireUser } from "./http.js";
+import { SEARCHABLE_TYPES } from "@pemie/shared";
 
 const createWorkspaceSchema = z.object({ name: z.string().min(2) });
 const updateWorkspaceSchema = z.object({ name: z.string().min(2) });
@@ -312,6 +314,18 @@ export function workspaceRoutes() {
   app.get("/:slug/projects/:projectSlug/leaderboard", async (c) => {
     const project = await resolveProject(c);
     return c.json({ leaderboard: await leaderboard.opProjectLeaderboard(project.id) });
+  });
+
+  app.get("/:slug/projects/:projectSlug/search", async (c) => {
+    const project = await resolveProject(c);
+    const q = c.req.query("q") ?? "";
+    const limitParam = c.req.query("limit");
+    const result = await searchSvc.opSearch(
+      project.id,
+      { query: q, limit: limitParam ? Number(limitParam) : undefined },
+      [...SEARCHABLE_TYPES]
+    );
+    return c.json(result);
   });
 
   app.put("/:slug/projects/:projectSlug/domain-config", async (c) => {

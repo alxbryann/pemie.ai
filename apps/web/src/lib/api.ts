@@ -382,6 +382,15 @@ export interface Board {
   columns: Column[];
 }
 
+// ─── Búsqueda global ───────────────────────────────────────────────────
+export interface SearchHit {
+  type: "story" | "commit" | "note" | "card";
+  id: string;
+  ref: string | null;
+  title: string;
+  createdAt: string;
+}
+
 // ─── API ─────────────────────────────────────────────────────────────
 
 export const api = {
@@ -465,6 +474,11 @@ export const api = {
 
   leaderboard: {
     get: (w: string, p: string) => get<{ leaderboard: LeaderboardEntry[] }>(`${pp(w, p)}/leaderboard`),
+  },
+
+  search: {
+    query: (w: string, p: string, q: { q: string; limit?: number }) =>
+      get<{ query: string; types: string[]; hits: SearchHit[] }>(`${pp(w, p)}/search${qs(q)}`),
   },
 
   // ─── F3: objetivo / informes / notas ───────────────────────────────

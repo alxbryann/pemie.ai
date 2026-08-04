@@ -60,6 +60,10 @@ export const ANALYTICS_EVENTS = {
   commits_filter_applied: ["filter_type"],
   commits_filter_cleared: [],
 
+  // ─── Búsqueda ────────────────────────────────────────────────────────
+  project_search_used: ["result_type"],
+  project_search_failed: ["reason"],
+
   // ─── Informes ────────────────────────────────────────────────────────
   report_objective_set: [],
   report_objective_set_failed: ["reason"],
