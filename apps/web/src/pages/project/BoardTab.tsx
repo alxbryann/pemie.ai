@@ -36,6 +36,7 @@ import {
   DragHandle,
   EmptyState,
   ErrorText,
+  Field,
   Input,
   Select,
   SkeletonBoard,
@@ -456,21 +457,29 @@ export default function BoardTab({ ws, proj }: { ws: string; proj: string }) {
 
       {/* Nueva tarjeta */}
       <Card>
-        <form onSubmit={addCard} className="flex flex-wrap items-center gap-2">
+        <h3 className="text-h4 text-ink-900">Nueva tarjeta</h3>
+        <p className="mt-1 text-body-sm text-ink-500">
+          Para tareas o bugs sueltos que no necesitan una historia de usuario completa.
+        </p>
+        <form onSubmit={addCard} className="mt-4 flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 sm:max-w-sm">
-            <Input
-              placeholder="Nueva tarjeta…"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              aria-label="Nueva tarjeta"
-            />
+            <Field label="Título">
+              <Input
+                placeholder="ej: Corregir test flaky"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                aria-label="Nueva tarjeta"
+              />
+            </Field>
           </div>
           <div className="w-32 shrink-0">
-            <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de tarjeta">
-              <option value="task">task</option>
-              <option value="story">story</option>
-              <option value="bug">bug</option>
-            </Select>
+            <Field label="Tipo">
+              <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo de tarjeta">
+                <option value="task">task</option>
+                <option value="story">story</option>
+                <option value="bug">bug</option>
+              </Select>
+            </Field>
           </div>
           <Button type="submit" className="shrink-0">
             Añadir a {board.columns[0]?.name}
